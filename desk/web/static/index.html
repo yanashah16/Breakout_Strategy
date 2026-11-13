@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Strategies · Pattern Desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232f6fed'/%3E%3Cpath d='M4 17l5-6 4 3 5-8' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-page="strategies">
+  <main class="page">
+    <div id="banner"></div>
+    <div class="page-head">
+      <div class="grow">
+        <h1>Strategies</h1>
+        <p>Switch a strategy on to let it trade. Each one only manages its own trades. <span id="sum-on" class="num"></span></p>
+      </div>
+      <button class="btn" id="roll-btn" title="Which contract month each market trades, and when it moves to the next">Contract roll</button>
+      <button class="btn primary" id="add"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add strategy</button>
+    </div>
+    <div class="toolbar">
+      <div id="chips" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      <input class="search" id="search" type="search" placeholder="Search strategies" aria-label="Search strategies">
+    </div>
+    <div id="groups"><div class="empty">Loading…</div></div>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

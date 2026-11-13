@@ -1,0 +1,22 @@
+# Pattern Desk settings. Restart the desk after a change.
+
+hub:
+  url: http://127.0.0.1:8000        # the Trading Hub (shared with the Strategy Manager)
+  api_key: ""                       # same as the hub's HUB_API_KEY (empty = none)
+
+account:
+  id: YOUR_ACCOUNT_ID                     # IBKR account the orders go to (DU... = paper)
+  algo_id: pattern_desk             # tag on every order; keep it fixed once trades are open
+
+web:
+  host: 127.0.0.1                   # 0.0.0.0 to open the page from another computer
+  port: 8002
+
+engine:
+  tick_seconds: 2                   # live price check interval (stops, targets, entries)
+  warmup_days: 90                   # history loaded at start for the indicators (max 120)
+  bar_settle_seconds: 3             # wait after a minute ends before using that candle
+  entry_wait_seconds: 60            # an entry not filled in this time is cancelled
+  reconcile_minutes: 5              # how often positions are checked against IBKR
+  dry_run: false                    # true = practice: no orders are sent (fills simulated at the live price)
+  auto_roll: true                   # an open trade moves to the next contract month on the roll date (or when you pick another month)

@@ -1,0 +1,22 @@
+{
+  "_comment": "Outright futures this strategy can trade. Add a product by adding one entry - no code change. point_value = $ per 1.0 of the QUOTED price (grains are quoted in cents: ZC 450.25 = 450.25 cents, $50 per 1.00). tick = minimum price step. months = the contract months traded (F G H J K M N Q U V X Z = Jan..Dec). roll = rule that picks the front month (see specs.py): equity_index = 8 days before the 3rd-Friday expiry (CME roll date); month_before = N days before the 1st day of the contract month (first-notice products: metals, grains); energy = N days before the 25th of the month BEFORE the contract month (CL last trade ~3 business days before the 25th). The non-index roll days are APPROXIMATE - check them against the exchange calendar, or set expiry explicitly in config.yaml. signal = whose bars drive the signals (micros use the full-size bars: same price, and it shares the hub's existing bar stream). iv = CBOE implied-volatility index used by the IV filter.",
+
+  "ES":  {"exchange": "CME",   "point_value": 50,    "tick": 0.25,   "months": "HMUZ",         "roll": "equity_index",           "iv": "VIX", "name": "E-mini S&P 500"},
+  "MES": {"exchange": "CME",   "point_value": 5,     "tick": 0.25,   "months": "HMUZ",         "roll": "equity_index",           "iv": "VIX", "signal": "ES",  "name": "Micro E-mini S&P 500"},
+  "NQ":  {"exchange": "CME",   "point_value": 20,    "tick": 0.25,   "months": "HMUZ",         "roll": "equity_index",           "iv": "VXN", "name": "E-mini Nasdaq-100"},
+  "MNQ": {"exchange": "CME",   "point_value": 2,     "tick": 0.25,   "months": "HMUZ",         "roll": "equity_index",           "iv": "VXN", "signal": "NQ",  "name": "Micro E-mini Nasdaq-100"},
+  "YM":  {"exchange": "CBOT",  "point_value": 5,     "tick": 1.0,    "months": "HMUZ",         "roll": "equity_index",           "iv": "VXD", "name": "E-mini Dow"},
+  "MYM": {"exchange": "CBOT",  "point_value": 0.5,   "tick": 1.0,    "months": "HMUZ",         "roll": "equity_index",           "iv": "VXD", "signal": "YM",  "name": "Micro E-mini Dow"},
+  "RTY": {"exchange": "CME",   "point_value": 50,    "tick": 0.1,    "months": "HMUZ",         "roll": "equity_index",           "iv": "RVX", "name": "E-mini Russell 2000"},
+  "M2K": {"exchange": "CME",   "point_value": 5,     "tick": 0.1,    "months": "HMUZ",         "roll": "equity_index",           "iv": "RVX", "signal": "RTY", "name": "Micro E-mini Russell 2000"},
+
+  "GC":  {"exchange": "COMEX", "point_value": 100,   "tick": 0.1,    "months": "GJMQVZ",       "roll": "month_before", "roll_days": 5,  "iv": "GVZ", "name": "Gold"},
+  "MGC": {"exchange": "COMEX", "point_value": 10,    "tick": 0.1,    "months": "GJMQVZ",       "roll": "month_before", "roll_days": 5,  "iv": "GVZ", "signal": "GC",  "name": "Micro Gold"},
+  "SI":  {"exchange": "COMEX", "point_value": 5000,  "tick": 0.005,  "months": "HKNUZ",        "roll": "month_before", "roll_days": 5,  "iv": "VXSLV", "trading_class": "SI", "name": "Silver"},
+  "SIL": {"exchange": "COMEX", "point_value": 1000,  "tick": 0.005,  "months": "HKNUZ",        "roll": "month_before", "roll_days": 5,  "iv": "VXSLV", "signal": "SI", "ib_symbol": "SI", "trading_class": "SIL", "name": "Micro Silver (1,000 oz)"},
+  "CL":  {"exchange": "NYMEX", "point_value": 1000,  "tick": 0.01,   "months": "FGHJKMNQUVXZ", "roll": "energy",       "roll_days": 7,  "iv": "OVX", "name": "Crude Oil"},
+  "MCL": {"exchange": "NYMEX", "point_value": 100,   "tick": 0.01,   "months": "FGHJKMNQUVXZ", "roll": "energy",       "roll_days": 7,  "iv": "OVX", "signal": "CL",  "name": "Micro Crude Oil"},
+  "ZC":  {"exchange": "CBOT",  "point_value": 50,    "tick": 0.25,   "months": "HKNUZ",        "roll": "month_before", "roll_days": 15, "name": "Corn"},
+  "ZS":  {"exchange": "CBOT",  "point_value": 50,    "tick": 0.25,   "months": "FHKNQUX",      "roll": "month_before", "roll_days": 15, "name": "Soybeans"},
+  "ZW":  {"exchange": "CBOT",  "point_value": 50,    "tick": 0.25,   "months": "HKNUZ",        "roll": "month_before", "roll_days": 15, "name": "Chicago Wheat"}
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live · Pattern Desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232f6fed'/%3E%3Cpath d='M4 17l5-6 4 3 5-8' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-page="live">
+  <main class="page">
+    <div id="banner"></div>
+    <div class="page-head">
+      <div class="grow">
+        <h1>Live</h1>
+        <p>Every open trade, its stop loss and target, and what happens next. Updates every 2 seconds.</p>
+      </div>
+    </div>
+    <div class="tiles" id="tiles"></div>
+
+    <div class="section-title"><h2>Open trades</h2></div>
+    <div id="trades"><div class="empty">Loading…</div></div>
+
+    <div class="section-title"><h2>Waiting to enter</h2><span id="armed-count"></span></div>
+    <div id="armed"></div>
+
+    <div class="danger-zone">
+      <p><b>Emergency.</b> Switches every strategy off and closes every position Pattern Desk opened. Positions opened by you or by other programs are never touched.</p>
+      <button class="btn danger" id="panic">Close everything</button>
+    </div>
+    <p class="source" id="data-line" style="margin-top:18px"></p>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
