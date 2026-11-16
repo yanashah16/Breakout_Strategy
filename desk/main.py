@@ -4,18 +4,30 @@ Then open http://127.0.0.1:8002
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import logging.handlers
 import os
 import sys
 
 import uvicorn
+from zoneinfo import ZoneInfo
 
 from desk import settings as S
 
 
+_NY = ZoneInfo("America/New_York")
+
+
+class _NYFormatter(logging.Formatter):
+    """Log time stamps in New York time, whatever time zone the computer is set to."""
+
+    def formatTime(self, record, datefmt=None):
+        return dt.datetime.fromtimestamp(record.created, _NY).strftime(datefmt or "%Y-%m-%d %H:%M:%S")
+
+
 def setup_logging():
-    fmt = logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S")
+    fmt = _NYFormatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s", "%Y-%m-%d %H:%M:%S")
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     fh = logging.handlers.TimedRotatingFileHandler(S.LOGS / "desk.log", when="midnight", backupCount=30,

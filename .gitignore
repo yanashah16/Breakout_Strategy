@@ -6,3 +6,5 @@ state/
 logs/
 data/
 *.log
+*.log.*
+.update_backups/

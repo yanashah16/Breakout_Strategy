@@ -140,7 +140,7 @@ class RollBook:
             write_json(MONTHS_FILE, self.state)
             return st
         a, b = vc[sess], vn[sess]
-        st.update(checked=dt.datetime.now().isoformat(timespec="seconds"), checked_on=str(trade_date(self.now_et())),
+        st.update(checked=self.now_et().isoformat(timespec="seconds"), checked_on=str(trade_date(self.now_et())),
                   session=sess, volumes={cur: a, nxt: b}, next=nxt, ratio=self.ratio, error="",
                   share=round(b / a, 3) if a else None)
         if a > 0 and b >= self.ratio * a:

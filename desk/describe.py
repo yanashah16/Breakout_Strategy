@@ -29,15 +29,16 @@ def fmt(px: Optional[float], tick: float) -> Optional[str]:
     return f"{px:,.{decimals(tick)}f}"
 
 
-def ny_time(iso: Optional[str], with_day: bool = False) -> str:
+def ny_time(iso: Optional[str], with_day: bool = False, seconds: bool = False) -> str:
     if not iso:
         return ""
     t = pd.Timestamp(iso)
     t = (t.tz_localize("UTC") if t.tzinfo is None else t).tz_convert(NY)
     today = pd.Timestamp.now(tz=NY).date()
+    clock = "%H:%M:%S" if seconds else "%H:%M"
     if with_day or t.date() != today:
-        return t.strftime("%a %d %b, %H:%M")
-    return t.strftime("%H:%M")
+        return t.strftime("%a %d %b, " + clock)
+    return t.strftime(clock)
 
 
 def side_word(side: int, verb: bool = False) -> str:
@@ -212,7 +213,7 @@ def history(limit: int = 300) -> list:
     rows = read_jsonl(JOURNAL, limit)
     out = []
     for r in reversed(rows):
-        out.append({**r, "opened_txt": ny_time(r.get("opened"), True), "closed_txt": ny_time(r.get("closed"), True)})
+        out.append({**r, "opened_txt": ny_time(r.get("opened"), True, True), "closed_txt": ny_time(r.get("closed"), True, True)})
     return out
 
 
@@ -244,7 +245,7 @@ def snapshot(engine) -> dict:
         warming = sorted(engine._warming)
     open_pnl = sum(r["pnl"] or 0 for r in live)
     return {
-        "time": dt.datetime.now().strftime("%H:%M:%S"),
+        "time": pd.Timestamp.now(tz=NY).strftime("%H:%M:%S"),
         "hub": hub, "dry_run": engine.s.dry_run, "account": engine.s.account_id,
         "accounts_in_use": sorted({r["account"] for r in rows if r["enabled"] or r["has_trade"]}),
         "strategies": rows, "live": live, "armed": armed, "attention": attention,

@@ -35,6 +35,11 @@ from desk.store import append_jsonl, read_json, write_json
 
 log = logging.getLogger("desk.engine")
 NY = "America/New_York"
+
+
+def now_ny() -> dt.datetime:
+    """Current New York wall-clock time (naive), independent of the computer's time zone."""
+    return pd.Timestamp.now(tz=NY).tz_localize(None).to_pydatetime()
 DEPLOYMENTS = STATE / "deployments.json"
 EVENTS = STATE / "events.jsonl"
 # state files of the Strategy Manager's futures strategies: contracts they hold are theirs, not "outside"
@@ -189,7 +194,7 @@ class Engine:
             self.event(f"{d.name} on {d.market.symbol}: orders now go to account {account}")
 
     def month_choices(self, symbol: str) -> List[dict]:
-        today = dt.datetime.now().date()
+        today = now_ny().date()
         spec = mkts.get(symbol)
         front = self.rolls.month(symbol, today)
         return [{"expiry": e, "label": mkts.label(symbol, e), "front": e == front}
@@ -517,7 +522,7 @@ class Engine:
         if key not in self._shared:
             self._shared = {key: {}}                      # one LiveMarket per market and minute, shared
         shared = self._shared[key]
-        ctx = BarContext(symbol=sym, m1=m1, now_et=dt.datetime.now(), shared=shared)
+        ctx = BarContext(symbol=sym, m1=m1, now_et=now_ny(), shared=shared)
         close = float(m1.close.iloc[-1])
         t0 = time.monotonic()
         for d in mine:
@@ -537,7 +542,7 @@ class Engine:
 
     # ------------------------------------------------------------------ contracts and prices
     def _contracts(self, act: List[Deployment]):
-        today = dt.datetime.now().date()
+        today = now_ny().date()
         need = {d.market.symbol for d in act} | {d.market.signal_symbol for d in act}
         self._volume_checks(need)
         for d in act:                                     # explicit months chosen by the operator
@@ -631,7 +636,7 @@ class Engine:
         """Which month is the hub's continuous stream on? If it moved since the last minute, shift the
         older minutes and every open trade on `sym` by the jump, BEFORE the new minutes are used."""
         spec = mkts.get(sym)
-        today = dt.datetime.now().date()
+        today = now_ny().date()
         pts = {}
         for m in mkts.expiries(spec, today, 2):
             cid = self._month_id(sym, m)
@@ -673,7 +678,7 @@ class Engine:
         """(con_id, expiry) new trades of d use: its chosen month, or the front month (auto, or once the
         chosen month is too close to expiry)."""
         choice = d.expiry_choice
-        if choice != "auto" and mkts.holdable(d.market, choice, dt.datetime.now().date()):
+        if choice != "auto" and mkts.holdable(d.market, choice, now_ny().date()):
             cid = self.month_ids.get((d.market.symbol, choice))
             front = self.contracts.get(d.market.symbol)
             if not cid and front and front[1] == choice:
@@ -683,7 +688,7 @@ class Engine:
 
     def _prices(self, act: List[Deployment], now: pd.Timestamp):
         want = {}
-        today = dt.datetime.now().date()
+        today = now_ny().date()
         for sym in {d.market.signal_symbol for d in act}:
             for m in mkts.expiries(mkts.get(sym), today, 2):   # to tell which month the bar stream is on
                 cid = self.month_ids.get((sym, m)) or (

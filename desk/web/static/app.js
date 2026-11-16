@@ -607,8 +607,8 @@ function renderHistory() {
     <div class="tile"><div class="t-label">Winning trades</div><div class="t-value">${rows.length ? Math.round(100 * wins / rows.length) + "%" : "—"}</div></div>
     <div class="tile"><div class="t-label">Average per trade</div><div class="t-value ${tone(tot)}">${rows.length ? money(tot / rows.length) : "—"}</div></div>`;
   $("#h-table").innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr>
-      <th>Closed</th><th>Strategy</th><th>Market</th><th>Side</th><th class="r">Qty</th><th class="r">Entry</th><th>Result</th><th class="r">Profit / loss</th></tr></thead><tbody>
-      ${rows.map(r => `<tr><td>${esc(r.closed_txt)}</td><td><b>${esc(r.name)}</b>${r.dry_run ? ' <span class="tag exp">practice</span>' : ""}</td>
+      <th>Entry time</th><th>Exit time</th><th>Strategy</th><th>Market</th><th>Side</th><th class="r">Qty</th><th class="r">Entry</th><th>Result</th><th class="r">Profit / loss</th></tr></thead><tbody>
+      ${rows.map(r => `<tr><td>${esc(r.opened_txt || "—")}</td><td>${esc(r.closed_txt)}</td><td><b>${esc(r.name)}</b>${r.dry_run ? ' <span class="tag exp">practice</span>' : ""}</td>
         <td>${esc(r.contract || r.market)}</td><td><span class="side ${String(r.side).toLowerCase()}" style="margin:0">${esc(String(r.side).toUpperCase())}</span></td>
         <td class="r">${r.qty}</td><td class="r">${r.entry ?? "—"}</td><td class="result">${esc(r.result)}</td>
         <td class="r ${tone(r.pnl)}"><b>${money(r.pnl)}</b></td></tr>`).join("")}</tbody></table></div>`
