@@ -41,6 +41,7 @@ def now_ny() -> dt.datetime:
     """Current New York wall-clock time (naive), independent of the computer's time zone."""
     return pd.Timestamp.now(tz=NY).tz_localize(None).to_pydatetime()
 DEPLOYMENTS = STATE / "deployments.json"
+ACCOUNT = STATE / "account.json"          # default account picked on the web page (beats settings.yaml)
 EVENTS = STATE / "events.jsonl"
 # state files of the Strategy Manager's futures strategies: contracts they hold are theirs, not "outside"
 OTHER_STATES = str(ROOT.parent / "strategy_manager" / "strategies" / "*" / "state" / "*.json")
@@ -55,6 +56,9 @@ def slug(s: str) -> str:
 class Engine:
     def __init__(self, settings: Settings):
         self.s = settings
+        picked = str((read_json(ACCOUNT) or {}).get("default") or "").strip()
+        if picked:
+            settings.account_id = picked
         self.hub = Hub(settings.hub_url, settings.hub_api_key, settings.algo_id, settings.account_id)
         self.lock = threading.RLock()
         self.cards, self.problems = cat.load()
@@ -192,6 +196,30 @@ class Engine:
             d.cfg["account"] = account
             self.save_cfgs()
             self.event(f"{d.name} on {d.market.symbol}: orders now go to account {account}")
+
+    def set_all_accounts(self, account: str) -> dict:
+        """One account for every strategy: the new default, and every strategy that is flat moves to it now.
+        Strategies with an open trade keep their account (change them once they are flat)."""
+        with self.lock:
+            account = self._check_account(account)
+            changed, busy = 0, []
+            for d in self.deps.values():
+                if d.account == account and d.cfg.get("account") == account:
+                    continue
+                if d.trade or d.held or d.order or d.roll:
+                    if d.account != account:
+                        d.cfg["account"] = d.account      # pin it: it must not follow the new default mid-trade
+                        busy.append(f"{d.name} on {d.market.symbol}")
+                    continue
+                d.cfg["account"] = account
+                changed += 1
+            self.s.account_id = account
+            self.hub.account_id = account
+            write_json(ACCOUNT, {"default": account, "set": now_iso()})
+            self.save_cfgs()
+            self.event(f"Account for all strategies set to {account} ({changed} changed"
+                       + (f", {len(busy)} kept their account until their open trade is closed" if busy else "") + ")")
+            return {"account": account, "changed": changed, "busy": busy}
 
     def month_choices(self, symbol: str) -> List[dict]:
         today = now_ny().date()

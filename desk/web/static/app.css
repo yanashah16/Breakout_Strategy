@@ -100,6 +100,8 @@ a { color: var(--accent); text-decoration: none; }
 }
 .badge.dry { background: var(--warn-soft); color: var(--warn); }
 .badge.acct { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); font-weight: 500; }
+button.badge.acct { font-family: inherit; cursor: pointer; }
+button.badge.acct:hover { color: var(--text); border-color: var(--muted); }
 
 /* ------------------------------------------------------------------ page */
 .page { max-width: 1180px; margin: 0 auto; padding: 28px 24px 80px; }

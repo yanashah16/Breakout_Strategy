@@ -112,6 +112,10 @@ def build(engine) -> FastAPI:
     def months(market: str):
         return {"months": run(engine.month_choices, market.upper())}
 
+    @app.post("/api/accounts/all")
+    def account_all(req: AccountReq):
+        return run(engine.set_all_accounts, req.account)
+
     @app.post("/api/deployments/{did}/account")
     def account(did: str, req: AccountReq):
         run(engine.set_account, did, req.account)

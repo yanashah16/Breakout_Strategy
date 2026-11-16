@@ -82,12 +82,44 @@ function shell() {
       <div class="topbar-right">
         <span class="badge dry" id="dry" hidden>Practice mode · no real orders</span>
         <div class="conn"><span class="dot" id="conn-dot"></span><span class="txt" id="conn-txt">Connecting…</span></div>
-        <span class="badge acct" id="acct"></span>
+        <button class="badge acct" id="acct" type="button" title="Choose the IBKR account for all strategies"></button>
       </div>
     </div></header>`);
   document.body.insertAdjacentHTML("beforeend",
     '<div class="scrim" id="scrim"></div><div class="dialog" id="dialog" role="dialog" aria-modal="true"></div><div class="toast" id="toast" role="status"></div><div class="menu" id="menu"></div>');
   $("#scrim").addEventListener("click", closeDialog);
+  $("#acct").addEventListener("click", allAccountsDialog);
+}
+
+async function allAccountsDialog() {
+  const d = openDialog(`${dialogHead("IBKR account")}<div class="d-body"><p class="muted">Loading the accounts from IBKR…</p></div>`);
+  const accts = await loadAccounts(true);
+  const cur = (STATE && STATE.account) || "";
+  if (!accts.length) {
+    d.innerHTML = `${dialogHead("IBKR account")}<div class="d-body"><p>The Trading Hub cannot list the IBKR accounts right now.
+      Check that the hub is running and connected to IBKR, then try again.</p></div>
+      <div class="d-foot"><button class="btn" data-close>Close</button></div>`;
+    $$("[data-close]", d).forEach(b => b.addEventListener("click", closeDialog));
+    return;
+  }
+  d.innerHTML = `${dialogHead("IBKR account")}<div class="d-body">
+    <div class="field"><label for="aa-a">Account for all strategies</label>
+      <select id="aa-a">${accountOptions(accts, cur)}</select>
+      <div class="hint">Every strategy sends its orders to this account, and new strategies use it too.
+        A strategy with an open trade keeps its account until the trade is closed. The list comes from your IBKR login
+        (accounts starting with DU are paper accounts).</div></div>
+    </div><div class="d-foot"><button class="btn" data-close>Cancel</button><button class="btn primary" id="aa-ok">Use this account</button></div>`;
+  $$("[data-close]", d).forEach(b => b.addEventListener("click", closeDialog));
+  $("#aa-ok", d).addEventListener("click", async () => {
+    const account = $("#aa-a", d).value;
+    try {
+      const res = await api("/api/accounts/all", { method: "POST", body: { account } });
+      closeDialog();
+      toast(`Orders now go to ${account}.` + (res.busy.length ? ` Still on the old account until their trade closes: ${res.busy.join(", ")}.` : ""), res.busy.length > 0);
+      if (typeof strat !== "undefined") strat.keys = "";
+      poll();
+    } catch (e) { toast(e.message, true); }
+  });
 }
 
 function renderShell(s) {
@@ -99,7 +131,7 @@ function renderShell(s) {
   txt.title = h.message || "";
   $("#dry").hidden = !s.dry_run;
   const accts = (s.accounts_in_use && s.accounts_in_use.length) ? s.accounts_in_use : (s.account ? [s.account] : []);
-  $("#acct").textContent = accts.length ? `Account${accts.length > 1 ? "s" : ""} ${accts.join(", ")}` : "";
+  $("#acct").textContent = (accts.length ? `Account${accts.length > 1 ? "s" : ""} ${accts.join(", ")}` : "Choose account") + " ▾";
   const n = $("#nav-live");
   n.hidden = !s.summary.open;
   n.textContent = s.summary.open;
