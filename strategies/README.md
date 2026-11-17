@@ -42,11 +42,6 @@ One YAML file = one strategy. Pattern Desk loads every `*.yaml` under this folde
 | `nq-double-measured` | Nasdaq Double Top/Bottom | double_NQ_mm |
 | `gold-double-measured` | Gold Double Top/Bottom | double_GC_mm |
 | `crude-double-measured` | Crude Double Top/Bottom | double_CL_mm |
-| `sp-double-classic` | S&P Wide Double Top/Bottom *(experimental)* | double_ES |
-| `gold-double-classic` | Gold Wide Double Top/Bottom *(experimental)* | double_GC |
-| **Pullback / trendline** | | |
-| `nq-trend-pullback` | Nasdaq Trend Pullback *(experimental)* | pullback_NQ_params |
-| `sp-` / `nq-` / `gold-` / `crude-trendline-break` | … Trendline Break *(experimental)* | trendline_params (generic) |
 
 How the names were chosen: the pattern + what makes the version different from its siblings
 (a sudden spike pole, a strong-trend filter, a young trend, a single runner vs banking part early …).

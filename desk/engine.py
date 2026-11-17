@@ -89,6 +89,27 @@ class Engine:
         self._roll_checking = False
         for c in self.cfgs:
             self._build(c)
+        self._drop_removed_cards()
+
+    def _drop_removed_cards(self):
+        """Strategies whose card was taken out of the catalog: forget the flat ones; keep (and warn about) any
+        that still holds a position or an order, so it is not lost."""
+        keep, dropped = [], []
+        for c in self.cfgs:
+            if c["strategy"] in self.cards:
+                keep.append(c)
+                continue
+            st = read_json(STATE / "deployments" / f"{c['id']}.json") or {}
+            if st.get("trade") or st.get("held") or st.get("order"):
+                keep.append(c)
+                self.event(f"{c['strategy']} on {c['market']} was removed from the catalog but still has an open "
+                           f"trade or order ({st.get('held') or 0} contracts). Close it in IBKR by hand.", "warn")
+            else:
+                dropped.append(f"{c['strategy']} on {c['market']}")
+        if dropped:
+            self.cfgs = keep
+            self.save_cfgs()
+            self.event(f"Removed {len(dropped)} strategies that are no longer in the catalog: {', '.join(dropped)}")
 
     # ================================================================== deployments config
     def _load_cfgs(self) -> List[dict]:

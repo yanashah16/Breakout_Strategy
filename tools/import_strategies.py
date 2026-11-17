@@ -133,20 +133,11 @@ CARDS = [
      "Targets the pattern's measured move. Trades bigger when volume is strong."),
     ("crude-double-measured", "double_top/double_CL_mm.yaml", "Crude Double Top/Bottom",
      "Targets the pattern's measured move. Trades bigger when volume is strong."),
-    ("sp-double-classic", "double_top/double_ES.yaml", "S&P Wide Double Top/Bottom",
-     "The earlier version: wider patterns, only in calm (non-trending) markets, one trade a day."),
-    ("gold-double-classic", "double_top/double_GC.yaml", "Gold Wide Double Top/Bottom",
-     "The earlier version: wide, clean patterns with a quick trailing stop."),
-    # ---- pullback / trendline
-    ("nq-trend-pullback", "pullback_NQ_params.yaml", "Nasdaq Trend Pullback",
-     "Buys dips (sells rallies) to the moving average in an established trend."),
 ]
-# (id, source, name, character, signal market) - not tuned for one market: experimental on all four
-GENERIC = [
-    ("trendline-break", "trendline_params.yaml", "Trendline Break",
-     "Enters at the close that breaks a pullback's trendline. Not yet tested on live data."),
-]
-EXPERIMENTAL = {"sp-double-classic", "gold-double-classic", "nq-trend-pullback", "trendline-break"}
+# (id, source, name, character) - one card per market from a setup that is not tuned for one market
+# (marked experimental). Empty: the untested ones (wide double tops, pullback, trendline break) were removed.
+GENERIC = []
+EXPERIMENTAL = set()
 
 
 def load_merged(path: Path) -> dict:
