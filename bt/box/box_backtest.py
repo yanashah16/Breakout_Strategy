@@ -14,7 +14,8 @@ Rules:
     and the bar before was not already a breakout (fresh break); fills at that close (+ slippage);
   * trend filter: long only when the close is above EMA(ema_len), short only below (null = off);
   * one position at a time; no entries on bars opening 16:45-18:00 New York or from flat_time to 18:00;
-  * stop = sl_box_pct % of the box height from the entry; TP1 / TP3 = tp1_mult / tp3_mult x that stop distance (R);
+  * stop = sl_box_pct % of the box height from the entry (NEGATIVE sl_box_pct / short_sl_box_pct = ATR stop:
+    -1.5 = 1.5 x ATR(atr_len) at the breakout bar, so R and every target in R are ATR based); TP1 / TP3 = tp1_mult / tp3_mult x that stop distance (R);
   * 3 legs of qty1 / qty2 / qty3: leg 1 takes profit at TP1, then the stop of legs 2 + 3 moves to entry;
     leg 2 has no target: the first bar that CLOSES below EMA(leg2_ema_len) (above it for shorts) closes leg 2 at
     that close, and leg 3 starts trailing, giving back trail_pct % of the best open profit since the entry
@@ -110,7 +111,7 @@ from orb_backtest import (NY, REASONS, RESULTS, STATS, atr, back_adjust, bar_fla
 
 HERE = Path(__file__).resolve().parent
 CHUNK = 2000                               # sweep combinations per progress line
-REASONS = REASONS + ["EMA exit"]           # 8: leg 2 closed beyond its EMA
+REASONS = REASONS + ["EMA exit", "Stall exit"]   # 8: leg 2 closed beyond its EMA, 9: stall exit (stall_age_h)
 BIG = HERE.parent / "data"                    # every instrument's 1m data: data/<ROOT>_1min.parquet
 IVDIR = HERE.parent / "data" / "iv"
 IV_INDEX = {"ES": "VIX", "NQ": "VXN", "GC": "GVZ", "CL": "OVX"}
@@ -144,7 +145,8 @@ DEFAULTS = {"timeframe": 5, "box_bars": 30, "box_edges": "wick", "max_box_atr": 
             "atrp_max": None, "atrp_min": None, "atrp_tf": None, "atrp_len": 14, "atrp_use": "block",
             "rng_min": None, "rng_max": None, "mom_max": None, "mom_min": None, "mom_bars": 48,
             "tr_ema_use": "block", "tr2_ema_len": None, "tr2_ema_tf": None, "tr2_ema_use": "block",
-            "trail_atr": None, "leg3_ema_len": None, "tp1_trail_pct": None, "be_lock_r": None}
+            "trail_atr": None, "leg3_ema_len": None, "tp1_trail_pct": None, "be_lock_r": None,
+            "stall_age_h": None, "stall_hours": 6, "stall_pct": 1.0, "stall_max_r": None}
 # trend filter settings that only matter while their filter is on (sweep: reset to the default when off)
 FILTER_PARTS = {"adx": ("adx_tf", "adx_len", "adx_smooth"), "adxv": ("adx_stat", "adx_k", "adx_use"), "di": ("di_use",),
                 "st": ("st_tf", "st_atr_len", "st_factor", "st_mode", "st_k", "st_use"),
@@ -184,6 +186,18 @@ def vol_ratio(v, fast, slow, kind):
         a, b = ema(v, fast), ema(v, slow)
     with np.errstate(divide="ignore", invalid="ignore"):
         return a / b
+
+
+def stall_flags(t, h, l, c, tf, age, hours, pct):
+    """Per chart bar: True when the high - low range of the last `hours` trading hours (this bar included, chart bars)
+    is <= pct % of the close; tb = bar time in hours; age = nan when off (stall_age_h null)."""
+    tb = (pd.DatetimeIndex(t).as_unit("s").asi8 / 3600.0).astype(np.float64)   # hours since 1970
+    if is_off(age):
+        return np.zeros(len(c), np.bool_), tb, np.nan
+    n = max(1, int(round(float(hours) * 60 / tf)))
+    hm = pd.Series(h).rolling(n, min_periods=n).max().to_numpy()
+    lm = pd.Series(l).rolling(n, min_periods=n).min().to_numpy()
+    return np.nan_to_num((hm - lm) <= float(pct) / 100.0 * c, nan=False).astype(np.bool_), tb, float(age)
 
 
 def hours_ok(t, skip):
@@ -643,7 +657,7 @@ def simulate(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, BOTS
              ia, ib, ix, ie, il2, max_box, buf, allow_long, allow_short, sl_pct, tp1, tp3, trail, rev, rev_bars,
              VR, iv, vmin, eok, ER, IVL, IVR, max_er, min_box, min_sq, be, risk, max_mult, iv_lo, iv_hi, ivr_lo, ivr_hi,
              s_tp1, s_tp2, s_tp3, s_trail, s_il2, g_r, g_sl, r_tr, r_pc, cap0, s_step, s_floor, s_slp, RG, DL, DS, ti, frev,
-             tr, has_reg, reg_m, reg_t1, reg_t3, reg_tr, reg_sl, rev_vi, vqi, vq_m1, vq_m2, vq_l2, vq_l3, l_tp2, max_lev, t_atr, il3f, t1tr, belk, szi, szm, vsz, vszm, QS, comm, mcomm, pv, tk, slip, rec):
+             tr, has_reg, reg_m, reg_t1, reg_t3, reg_tr, reg_sl, rev_vi, vqi, vq_m1, vq_m2, vq_l2, vq_l3, l_tp2, max_lev, t_atr, il3f, t1tr, belk, szi, szm, vsz, vszm, stl, tb, st_age, st_mr, QS, comm, mcomm, pv, tk, slip, rec):
     """Indicator rows: ATRS[ia], BATRS[ib], TOPS / BOTS[ix], trend EMA EMAS[ie] (-1 = off), leg 2 EMA EMAS[il2].
     max_box = nan when off. Volume filter: enter only when VR[iv] (fast / slow average volume) > vmin (nan = off).
     eok = breakout allowed per bar (skip_hours), ER = daily efficiency ratio per bar; max_er, min_box, min_sq,
@@ -693,6 +707,7 @@ def simulate(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, BOTS
     i_entry = 0                       # chart bar of the breakout entry
     unit = 0.0                        # stop distance = 1 R
     height = 0.0
+    x_atr = 0.0                       # ATR(atr_len) at the breakout (ATR stops: sl_box_pct < 0)
     ext = 0.0                         # best price the trade reached
     is_rev = False
     stop_px = 0.0
@@ -767,7 +782,8 @@ def simulate(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, BOTS
                     is_rev = True
                     if not np.isnan(s_slp):            # own stop per side: the reversed side's % of the box
                         pct = s_slp if d < 0 else sl_pct
-                        unit = max(1.0, np.floor(pct / 100.0 * height / tk + 0.5)) * tk
+                        dist = -pct * x_atr if pct < 0 else pct / 100.0 * height     # < 0 = x ATR
+                        unit = max(1.0, np.floor(dist / tk + 0.5)) * tk
                     if d > 0:
                         x_tp1, x_tp2, x_tp3, x_trail, x_il2 = tp1, l_tp2, tp3, trail, il2
                     else:
@@ -867,6 +883,17 @@ def simulate(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, BOTS
                     leg_open[k] = False
             side = 0
             mark_flat(QS, acc, peak, max_dd, cap0, max_ddp)
+        # stall exit: the trade is >= st_age hours old and the last stall_hours of price stayed in a stall_pct % range
+        if (side != 0 and not np.isnan(st_age) and stl[i] and tb[i] - tb[i_entry] >= st_age
+                and (np.isnan(st_mr) or side * (c[i] - entry) < st_mr * unit)):   # stall_max_r: only trades below X R open profit
+            last = bstart[i + 1] - 1
+            for k in range(3):
+                if leg_open[k]:
+                    nt = book(acc[k], T, nt, rec, entry_row, last, side, entry, c[i] - side * sl_px, mult * lm[k],
+                              cm, pv, 9, k)
+                    leg_open[k] = False
+            side = 0
+            mark_flat(QS, acc, peak, max_dd, cap0, max_ddp)
 
         if side != 0 or not ok[i] or not eok[i] or i == 0 or i == n - 1:
             continue
@@ -915,7 +942,9 @@ def simulate(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, BOTS
         pct = s_slp if d < 0 and not np.isnan(s_slp) else sl_pct    # shorts: their own stop (short_sl_box_pct)
         if good and not np.isnan(reg_sl):
             pct = reg_sl
-        unit = max(1.0, np.floor(pct / 100.0 * height / tk + 0.5)) * tk
+        x_atr = xa
+        dist = -pct * xa if pct < 0 else pct / 100.0 * height      # sl_box_pct < 0 = stop at -sl_box_pct x ATR(atr_len)
+        unit = max(1.0, np.floor(dist / tk + 0.5)) * tk
         if not np.isnan(r_tr) or not np.isnan(r_pc):           # size the whole trade to a $ / % risk
             budget = r_tr if not np.isnan(r_tr) else (cap0 + realized(QS, 0, acc, 0)) * r_pc / 100.0
             sz = max(unit, s_floor * xa) if not np.isnan(s_floor) else unit   # tiny / zero box: size on the ATR
@@ -1033,7 +1062,7 @@ def sweep_kernel(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, 
                  IA, IB, IX, IE, IL2, MAXBOX, BUF, ALONG, ASHORT, SLP, TP1, TP3, TRAIL, REV, REVB,
                  VR, IV, VMIN, eok, ER, IVL, IVR, MAXER, MINBOX, MINSQ, BE, RISK, MAXM, IVLO, IVHI, IVRLO, IVRHI,
                  STP1, STP2, STP3, STRAIL, SIL2, GR, GSL, RTR, RPC, CAP0, SSTEP, SFLOOR, SSLP, RG, DL, DS, TI, FREV,
-                 TR, HREG, REGM, REGT1, REGT3, REGTR, REGSL, REVI, VQI, VQM1, VQM2, VQL2, VQL3, LTP2, MAXLEV, TATR, IL3, T1TR, BELK, SZI, SZM, VSZ, VSZM, QALL, qoff, comm, mcomm, pv, tk, slip):
+                 TR, HREG, REGM, REGT1, REGT3, REGTR, REGSL, REVI, VQI, VQM1, VQM2, VQL2, VQL3, LTP2, MAXLEV, TATR, IL3, T1TR, BELK, SZI, SZM, VSZ, VSZM, STL, TB, STAGE, STMR, QALL, qoff, comm, mcomm, pv, tk, slip):
     """One simulation per setting k (row k of each per-setting array); its quantity sets are QALL[qoff[k]:qoff[k + 1]]
     (output rows in that order)."""
     out = np.empty((qoff[-1] - qoff[0], 11))       # len(STATS)
@@ -1044,7 +1073,7 @@ def sweep_kernel(c, bstart, ok, flat, mo, mh, ml, mc, bpath, ATRS, BATRS, TOPS, 
             TRAIL[k], REV[k], REVB[k], VR, IV[k], VMIN[k], eok, ER, IVL, IVR, MAXER[k], MINBOX[k], MINSQ[k], BE[k], RISK[k],
             MAXM[k], IVLO[k], IVHI[k], IVRLO[k], IVRHI[k], STP1[k], STP2[k], STP3[k], STRAIL[k], SIL2[k], GR[k], GSL[k],
             RTR[k], RPC[k], CAP0[k], SSTEP[k], SFLOOR[k], SSLP[k], RG, DL, DS, TI[k], FREV[k],
-            TR[k], HREG[k], REGM[k], REGT1[k], REGT3[k], REGTR[k], REGSL[k], REVI[k], VQI[k], VQM1[k], VQM2[k], VQL2[k], VQL3[k], LTP2[k], MAXLEV[k], TATR[k], IL3[k], T1TR[k], BELK[k], SZI[k], SZM[k], VSZ[k], VSZM[k],
+            TR[k], HREG[k], REGM[k], REGT1[k], REGT3[k], REGTR[k], REGSL[k], REVI[k], VQI[k], VQM1[k], VQM2[k], VQL2[k], VQL3[k], LTP2[k], MAXLEV[k], TATR[k], IL3[k], T1TR[k], BELK[k], SZI[k], SZM[k], VSZ[k], VSZM[k], STL, TB, STAGE, STMR,
             QALL[qoff[k]:qoff[k + 1]],
             comm, mcomm, pv, tk, slip,
             False)[0]
@@ -1121,8 +1150,9 @@ def run_single(m1, mo, mh, ml, mc, p, cfg, stamp):
     eok, er = hours_ok(t, p["skip_hours"]), trend_er(t, c, int(p["er_days"]))
     ivl, ivr = implied_vol(t, cfg["data"]["instrument"], int(p["ivr_days"]))
     qty = tg[QCOLS].to_numpy(float)
+    stl, tb, st_age = stall_flags(t, h, l, c, tf, p["stall_age_h"], p["stall_hours"], p["stall_pct"])
     st, T, E = simulate(c, bstart, ok, flat, mo, mh, ml, mc, bar_path(bstart, mh, ml, mc), *tables,
-                        *[a[0] for a in arrays], vr, iv[0], vmin[0], eok, er, ivl, ivr, *[a if k in (23, 24, 25) else a[0] for k, a in enumerate(extra)], qty,
+                        *[a[0] for a in arrays], vr, iv[0], vmin[0], eok, er, ivl, ivr, *[a if k in (23, 24, 25) else a[0] for k, a in enumerate(extra)], stl, tb, st_age, np.nan if is_off(p["stall_max_r"]) else float(p["stall_max_r"]), qty,
                         float(cost["commission"]), float(cost["micro_commission"]),
                         float(cost["point_value"]), float(cost["tick"]), float(cost["slippage_ticks"]), True)
     st = st[0]
@@ -1268,9 +1298,9 @@ def run_sweep(m1, mo, mh, ml, mc, grid, cfg, stamp):
     parts = []
     t0 = time.time()
     done = 0
-    keys = ["timeframe", "flat_time", "box_edges", "skip_hours", "er_days", "ivr_days"]
+    keys = ["timeframe", "flat_time", "box_edges", "skip_hours", "er_days", "ivr_days", "stall_age_h", "stall_hours", "stall_pct", "stall_max_r"]
     pkeys = [n for n in combos.columns if n not in QCOLS]
-    for (tf, ft, edges, skip, erd, ivd), g in combos.groupby(keys, sort=False, dropna=False):
+    for (tf, ft, edges, skip, erd, ivd, sage, shrs, spct, smr), g in combos.groupby(keys, sort=False, dropna=False):
         # quantities do not change the trades (only which legs are 0 does): one simulation per setting
         # serves all its quantity sets -> rows of a setting together, settings = `tg` (first row of each)
         z = (g[QCOLS].to_numpy(float) > 0) @ (2 ** np.arange(3))
@@ -1293,13 +1323,14 @@ def run_sweep(m1, mo, mh, ml, mc, grid, cfg, stamp):
         tables, arrays, vr, iv, vmin, extra = build(tg, h, l, c, v, edges, Frames(m1, bstart, (h, l, c), tf), o)
         eok, er = hours_ok(t, None if is_off(skip) else skip), trend_er(t, c, int(erd))
         ivl, ivr = implied_vol(t, cfg["data"]["instrument"], int(ivd))
+        stl, tb, st_age = stall_flags(t, h, l, c, tf, sage, shrs, spct)
         out = np.empty((len(g), len(STATS)))
         step = max(12, CHUNK * len(tg) // len(g))  # settings per progress line (about CHUNK combinations)
         for s0 in range(0, len(tg), step):
             s1 = min(s0 + step, len(tg))
             out[qoff[s0]:qoff[s1]] = sweep_kernel(c, bstart, ok, flat, mo, mh, ml, mc, bpath, *tables,
                                                   *[a[s0:s1] for a in arrays], vr, iv[s0:s1], vmin[s0:s1],
-                                                  eok, er, ivl, ivr, *[a if k in (23, 24, 25) else a[s0:s1] for k, a in enumerate(extra)], QALL, qoff[s0:s1 + 1], float(cost["commission"]),
+                                                  eok, er, ivl, ivr, *[a if k in (23, 24, 25) else a[s0:s1] for k, a in enumerate(extra)], stl, tb, st_age, np.nan if is_off(smr) else float(smr), QALL, qoff[s0:s1 + 1], float(cost["commission"]),
                                                   float(cost["micro_commission"]), float(cost["point_value"]), float(cost["tick"]),
                                                   float(cost["slippage_ticks"]))
             done += qoff[s1] - qoff[s0]
