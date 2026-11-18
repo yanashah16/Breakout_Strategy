@@ -15,7 +15,7 @@ web:
 engine:
   tick_seconds: 2                   # live price check interval (stops, targets, entries)
   warmup_days: 90                   # history loaded at start for the indicators (max 120)
-  bar_settle_seconds: 3             # wait after a minute ends before using that candle
+  bar_settle_seconds: 0             # seconds to wait after a minute ends before fetching that candle (0 = at :00, retried every tick until it arrives)
   entry_wait_seconds: 60            # an entry not filled in this time is cancelled
   entry_max_age_minutes: 3          # skip an entry whose trigger was hit longer ago than this (desk off / data down, catching up)
   entry_max_chase_r: 0.5            # skip an entry when the live price is already this many R past the trigger (0 = off)

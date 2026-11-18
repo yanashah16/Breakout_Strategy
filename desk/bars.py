@@ -45,6 +45,8 @@ def frame(rows: list) -> pd.DataFrame:
 
 
 class BarBook:
+    RETRY_SECS = 15                         # re-ask for a missing just-ended minute until this second
+
     def __init__(self, symbol: str, exchange: str, days: int, settle: float):
         self.symbol = symbol
         self.exchange = exchange
@@ -118,6 +120,16 @@ class BarBook:
     def update(self, hub, now_utc: pd.Timestamp) -> List[pd.Series]:
         """Read the live stream; return the NEW completed minutes (oldest first)."""
         self.last_fetch_minute = now_utc.tz_convert(NY).tz_localize(None).replace(second=0, microsecond=0)
+        rows = self._update(hub, now_utc)
+        # the minute that just ended is not in the stream yet: try again on the next tick (a few seconds),
+        # not a whole minute later - until RETRY_SECS into the minute (market closed: give up, next minute)
+        want = now_utc.floor("min") - pd.Timedelta(minutes=1)
+        have = self.df.t.iloc[-1] if len(self.df) else None
+        if (have is None or have < want) and now_utc.second < self.RETRY_SECS:
+            self.last_fetch_minute = None
+        return rows
+
+    def _update(self, hub, now_utc: pd.Timestamp) -> List[pd.Series]:
         data = hub.bars(self.symbol)
         if not data or not data.get("bars"):
             hub.subscribe_bars(self.symbol, self.exchange)    # never subscribed / dropped: (re)start it
