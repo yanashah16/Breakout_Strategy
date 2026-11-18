@@ -1,0 +1,74 @@
+# Nasdaq Zone Bounce Reverse  -  from bt/multitouch/Zone_Line_Bounce_Reverse_NQ_5m.yaml (backtest: research/lines_backtest.py)
+# Research notes:
+# ZONE LINE BOUNCE REVERSE - NQ 5m, raw (no filters). Best NQ zoneline row of the 2026-11-10 evolutionary search.
+#   Run (from bt\): python patterns/patterns_backtest.py multitouch/Zone_Line_Bounce_Reverse_NQ_5m.yaml
+#   $1,000 risk per trade (2016-11..2026-10): 0 tick net $464,963, DD $26,024, net/DD 17.87 | 1 tick 15.11 | 2 ticks 12.24.
+#   3,159 trades, win 43.2 %, +0.147 R, PF 1.32. Top 10 trades = 17 % of net. 10/10 full years up.
+#   2016-21 $233k (+0.148 R) | 2022-26 $232k (+0.146 R). Long $345k, short $119k.
+#   1 contract fixed (risk_usd: null): 0 tick net/DD 10.70, 1 tick 10.15.
+#   WATCH: neighbours drop (pivot 3 -> 4.2, touches 2 -> 6.6, zone 0.25 -> 7.9). In-sample, no walk-forward yet.
+# experimental: in-sample settings, no walk-forward yet - the page warns before switching on.
+id: nq-zone-bounce-reverse
+name: Nasdaq Zone Bounce Reverse
+family: Nasdaq 100
+signal: NQ
+markets:
+- MNQ
+- NQ
+pattern: Zone line (reverse)
+summary: 'Fades a bounce off a trend-line zone: when price bounces, it takes the other side.'
+how_it_enters: 'Builds a trend line from at least 3 significant swing points with a narrow zone around it. When a candle bounces
+  off the zone (a rising line: low into the zone, up close) it trades the OTHER way at that close (the bounce is expected
+  to fail). Stop 7 ATR away.'
+how_it_exits: 'Whole position to one target at 8 R. Closes after 144 candles (12 h) if still open. Sized by risk: each trade
+  risks at most $1,000 at its stop (whole contracts, rounded down; skipped if 1 contract would risk more). The boxes set the
+  Target : Runner split.'
+experimental: true
+default_qty:
+- 1
+- 0
+engine: lines
+source: bt/multitouch/Zone_Line_Bounce_Reverse_NQ_5m.yaml
+data:
+  htf_anchor: null
+  max_contracts: 20
+logic:
+  setup: zoneline
+  timeframe: 5
+  direction: Both
+  atr_len: 14
+  line_on: wick
+  pivot_bars: 2
+  prominence_atr: 0.4
+  max_pivots: 18
+  min_touches: 3
+  min_gap_bars: 3
+  zone_atr: 0.2
+  slope_min_atr: 0.03
+  slope_max_atr: 0.2
+  entry_mode: bounce
+  reverse: true
+  bounce_need_trend: true
+  approach_bars: 5
+  approach_max_atr: null
+  break_need_lh: true
+  retest_bars: 100
+  confirm_bars: 10
+  stop_mode: atr
+  stop_atr: 7.0
+  risk_min_atr: 0.3
+  risk_max_atr: 14.0
+  risk_min_pts: null
+  sl_atr: 0.0
+  tp_r: 8.0
+  qty1: 1
+  qty2: 0
+  tp2_r: null
+  be_after_tp1: false
+  tp1_lock_r: 0.0
+  trail: false
+  trail_r: 3.0
+  risk_usd: 1000
+  max_bars: 144
+  trend_ema: null
+  htf_adx_tf: null

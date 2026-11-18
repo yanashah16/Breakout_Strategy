@@ -67,6 +67,7 @@ class S:
     dry_run = False
     entry_wait_seconds = 60
     account_id = "DU_DEFAULT"
+    entry_max_age_minutes = 0      # entries here use a fixed past timestamp: no late-entry check
 
 
 @pytest.fixture

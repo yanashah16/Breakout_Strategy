@@ -51,6 +51,7 @@ class Trade:
     tp2_r: float = 0.0
     trail_r: float = 0.0
     entry_minute: str = ""                # ISO UTC of the minute the entry triggered
+    lock_px: float = 0.0                  # extra runner lock after TP1, in price (see _lock)
     risk: float = 0.0
     open: List[bool] = field(default_factory=lambda: [True, True])
     stop: List[float] = field(default_factory=lambda: [NAN, NAN])
@@ -138,6 +139,13 @@ class Trade:
             out.append(self._out(2, "tp2", self.tp2, when))
         return out
 
+    def _lock(self, rules: ExitRules) -> None:
+        """be_after_tp1: runner stop to entry + tp1_lock_r x R + lock_px (research manage(); 0 + 0 = break-even)."""
+        sd = self.side
+        lk = self.entry + sd * (float(getattr(rules, "tp1_lock_r", 0.0) or 0.0) * self.risk + self.lock_px)
+        if rules.be_after_tp1 and self.open[1] and sd * (lk - self.stop[1]) > 0:
+            self.stop[1] = lk; self.kind[1] = 1
+
     # ------------------------------------------------------------------ completed minute
     def on_minute(self, o: float, h: float, l: float, c: float, minute: str, rules: ExitRules) -> List[Exit]:
         """research manage() for one 1-minute row."""
@@ -161,15 +169,14 @@ class Trade:
                 if self.open[0] and hit:
                     out.append(self._out(1, "tp1", self.tp1, minute))
                 self.tp1_done = True
-                if rules.be_after_tp1 and self.open[1] and sd * (entry - self.stop[1]) > 0:
-                    self.stop[1] = entry; self.kind[1] = 1
+                self._lock(rules)
             if self.open[1] and not math.isnan(self.tp2) and ((sd > 0 and h >= self.tp2) or (sd < 0 and l <= self.tp2)):
                 out.append(self._out(2, "tp2", self.tp2, minute))
         else:
             if Trade.STRICT_ENTRY_MINUTE and ((sd > 0 and l <= self.stop0) or (sd < 0 and h >= self.stop0)):
                 return out + self.close_all("stop", self.stop0, minute)
-            if tp1_by_price and rules.be_after_tp1 and self.open[1] and sd * (entry - self.stop[1]) > 0:
-                self.stop[1] = entry; self.kind[1] = 1
+            if tp1_by_price:
+                self._lock(rules)
         if not self.is_open or entry_min:
             return out                            # the fill minute moves nothing (backtest: manage from m + 1)
         fav = h if sd > 0 else l

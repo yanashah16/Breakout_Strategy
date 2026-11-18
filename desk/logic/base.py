@@ -25,6 +25,7 @@ class ExitRules:
     trail_pct: float = 0.0         # > 0 = give back x % of the best profit instead of trail_r
     max_bars: int = 0              # close at the close of the n-th chart bar (0 = off)
     flat_time: Optional[str] = None
+    tp1_lock_r: float = 0.0        # be_after_tp1: the runner stop goes to entry + x R (+ Trade.lock_px), 0 = the entry
 
 
 @dataclass
@@ -60,6 +61,7 @@ class Plan:
     tp_price: float = float("nan")
     tp2_r: float = 0.0             # 0 = no fixed runner target
     trail_r: float = 0.0           # runner trail distance in R
+    lock_px: float = 0.0           # extra lock after TP1 in price (research tp1_lock_atr x signal ATR)
     note: str = ""
 
     def to_dict(self) -> dict:

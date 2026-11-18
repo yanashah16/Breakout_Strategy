@@ -1,0 +1,69 @@
+# S&P Multi-Touch Break  -  from bt/multitouch/Multi_Touch_Break_ES_5m.yaml (backtest: research/lines_backtest.py)
+# Research notes:
+# MULTI-TOUCH LINE BREAK - ES 5m, raw (no filters). Best consistent ES row of the 2026-11-10 evolutionary search.
+#   Run (from bt\): python patterns/patterns_backtest.py multitouch/Multi_Touch_Break_ES_5m.yaml
+#   $1,000 risk per trade (2016-11..2026-10): 0 tick net $138,890, DD $12,749, net/DD 10.89 | 1 tick 8.64 | 2 ticks 3.81.
+#   1,552 trades, win 50.5 %, +0.089 R, PF 1.20. Top 10 trades = 10 % of net. 10/10 full years up.
+#   2016-21 $62k (+0.08 R) | 2022-26 $77k (+0.10 R). Long $122k, short only $17k.
+#   1 contract fixed (risk_usd: null): 0 tick net/DD 5.77, 1 tick 5.27.
+#   WATCH: very sharp peak (pivot 3 -> 1.7, touches 3 -> 1.2, stop 10 ATR -> 3.0). In-sample, no walk-forward yet.
+# experimental: in-sample settings, no walk-forward yet - the page warns before switching on.
+id: es-multi-touch-break
+name: S&P Multi-Touch Break
+family: S&P 500
+signal: ES
+markets:
+- MES
+- ES
+pattern: Multi-touch line break
+summary: Trades the first close through a trend line that price has touched several times.
+how_it_enters: 'Draws the best trend line through several swing highs or lows (at least 2 touches). When a candle closes through
+  the line it enters at that close: a rising line broken = short, a falling line broken = long. Stop 12 ATR away; trades with
+  a stop under 3 points are skipped.'
+how_it_exits: 'Whole position to one target at 1.25 R. Closes after 864 candles (72 h) if still open. Sized by risk: each
+  trade risks at most $1,000 at its stop (whole contracts, rounded down; skipped if 1 contract would risk more). The boxes
+  set the Target : Runner split.'
+experimental: true
+default_qty:
+- 1
+- 0
+engine: lines
+source: bt/multitouch/Multi_Touch_Break_ES_5m.yaml
+data:
+  htf_anchor: null
+  max_contracts: 20
+logic:
+  setup: multitouch
+  timeframe: 5
+  direction: Both
+  atr_len: 14
+  line_on: wick
+  pivot_bars: 4
+  prominence_atr: 0.0
+  max_pivots: 12
+  min_touches: 2
+  min_gap_bars: 5
+  min_span_bars: 10
+  touch_atr: 0.8
+  slope_min_atr: 0.01
+  slope_max_atr: 0.08
+  break_atr: 0.1
+  reverse: false
+  stop_mode: atr
+  stop_atr: 12.0
+  risk_min_atr: 0.3
+  risk_max_atr: 14.0
+  risk_min_pts: 3.0
+  sl_atr: 0.0
+  tp_r: 1.25
+  qty1: 1
+  qty2: 0
+  tp2_r: null
+  be_after_tp1: false
+  tp1_lock_r: 0.0
+  trail: false
+  trail_r: 3.0
+  risk_usd: 1000
+  max_bars: 864
+  trend_ema: null
+  htf_adx_tf: null

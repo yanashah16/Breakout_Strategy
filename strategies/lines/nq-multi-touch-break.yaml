@@ -1,0 +1,69 @@
+# Nasdaq Multi-Touch Break  -  from bt/multitouch/Multi_Touch_Break_NQ_5m.yaml (backtest: research/lines_backtest.py)
+# Research notes:
+# MULTI-TOUCH LINE BREAK - NQ 5m, raw (no filters). Best NQ row of the 2026-11-10 evolutionary search.
+#   Run (from bt\): python patterns/patterns_backtest.py multitouch/Multi_Touch_Break_NQ_5m.yaml
+#   $1,000 risk per trade (2016-11..2026-10): 0 tick net $222,039, DD $8,269, net/DD 26.85 | 1 tick 24.93 | 2 ticks 23.57.
+#   1,138 trades, win 53.6 %, +0.195 R, PF 1.42. Top 10 trades = 9 % of net. 9/10 full years up (2017 -$2k).
+#   2016-21 $104k (+0.23 R) | 2022-26 $118k (+0.17 R). Long $156k, short $66k.
+#   1 contract fixed (risk_usd: null): 0 tick net/DD 14.35, 1 tick 13.92.
+#   WATCH: needs risk_min_pts 10 (without it 10.04). Sharp peak: pivot 6 -> 8.4, touches 3 -> 0.8, stop 2.5 ATR -> 10.2. In-sample, no walk-forward yet.
+# experimental: in-sample settings, no walk-forward yet - the page warns before switching on.
+id: nq-multi-touch-break
+name: Nasdaq Multi-Touch Break
+family: Nasdaq 100
+signal: NQ
+markets:
+- MNQ
+- NQ
+pattern: Multi-touch line break
+summary: Trades the first close through a trend line that price has touched several times.
+how_it_enters: 'Draws the best trend line through several swing highs or lows (at least 4 touches). When a candle closes through
+  the line it enters at that close: a rising line broken = short, a falling line broken = long. Stop 3 ATR away; trades with
+  a stop under 10 points (quiet market) are skipped.'
+how_it_exits: 'Whole position to one target at 1.25 R. Closes after 144 candles (12 h) if still open. Sized by risk: each
+  trade risks at most $1,000 at its stop (whole contracts, rounded down; skipped if 1 contract would risk more). The boxes
+  set the Target : Runner split.'
+experimental: true
+default_qty:
+- 1
+- 0
+engine: lines
+source: bt/multitouch/Multi_Touch_Break_NQ_5m.yaml
+data:
+  htf_anchor: null
+  max_contracts: 20
+logic:
+  setup: multitouch
+  timeframe: 5
+  direction: Both
+  atr_len: 14
+  line_on: wick
+  pivot_bars: 8
+  prominence_atr: 1.0
+  max_pivots: 14
+  min_touches: 4
+  min_gap_bars: 13
+  min_span_bars: 30
+  touch_atr: 0.4
+  slope_min_atr: 0.03
+  slope_max_atr: 0.1
+  break_atr: 0.0
+  reverse: false
+  stop_mode: atr
+  stop_atr: 3.0
+  risk_min_atr: 0.3
+  risk_max_atr: 14.0
+  risk_min_pts: 10.0
+  sl_atr: 0.0
+  tp_r: 1.25
+  qty1: 1
+  qty2: 0
+  tp2_r: null
+  be_after_tp1: false
+  tp1_lock_r: 0.0
+  trail: false
+  trail_r: 3.0
+  risk_usd: 1000
+  max_bars: 144
+  trend_ema: null
+  htf_adx_tf: null

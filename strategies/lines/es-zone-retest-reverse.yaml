@@ -1,0 +1,78 @@
+# S&P Zone Retest Reverse  -  from bt/multitouch/Zone_Line_Retest_Reverse_ES_5m_v3.yaml (backtest: research/lines_backtest.py)
+# Research notes:
+# ZONE LINE RETEST REVERSE - ES 5m, v3 (2026-11-10) = the Pine file's defaults. Single run (no lists).
+#   Run (from bt\): python patterns/patterns_backtest.py multitouch/Zone_Line_Retest_Reverse_ES_5m_v3.yaml
+#   v3 = qty 1 + 2, no TP2, no trail, + 60m ADX(14) 18..50.
+#   1 tick, $1,000 risk, 2016-11..2026-10: net $106,614, DD $9,003, net/DD 11.84, PF 1.41, 832 trades, win 55.0 %, 11/11 years up.
+#   PF by half 1.31 (2016-21) / 1.49 (2022-26). 0 tick net/DD 19.65, 2 ticks 7.85. Top 10 trades = 37 % of net.
+#   Without the ADX filter (v2): 1 tick PF 1.29, net/DD 12.03, 1,095 trades, 2017 -$1.6k.
+#   Walk-forward check (choose on one half, test on the other): other tuned changes did NOT hold up; the ADX minimum raised PF
+#   in both halves for every 30m / 60m min from 14 to 22. Still in-sample overall.
+# experimental: in-sample settings, no walk-forward yet - the page warns before switching on.
+id: es-zone-retest-reverse
+name: S&P Zone Retest Reverse
+family: S&P 500
+signal: ES
+markets:
+- MES
+- ES
+pattern: Zone line (reverse)
+summary: Fades a break-and-retest of a trend-line zone, only when the 60-minute ADX is 18 to 50.
+how_it_enters: Builds a trend line from at least 4 significant swing closes with a zone around it. After price closes through
+  the zone and comes back to retest it, a close beyond the retest candle is the signal; it trades the OTHER way at that close.
+  Only when the 60-minute ADX(14) is between 18 and 50. Stop 10 ATR away; stops under 3 points are skipped.
+how_it_exits: 'Banks the Target contracts at 1 R; then the Runner''s stop moves to entry + 0.25 R and it rides on. Closes
+  after 144 candles (12 h) if still open. Sized by risk: each trade risks at most $1,000 at its stop (whole contracts, rounded
+  down; skipped if 1 contract would risk more). The boxes set the Target : Runner split.'
+experimental: true
+default_qty:
+- 1
+- 2
+engine: lines
+source: bt/multitouch/Zone_Line_Retest_Reverse_ES_5m_v3.yaml
+data:
+  htf_anchor: null
+  max_contracts: 20
+logic:
+  setup: zoneline
+  timeframe: 5
+  direction: Both
+  atr_len: 14
+  line_on: close
+  pivot_bars: 2
+  prominence_atr: 0.4
+  max_pivots: 24
+  min_touches: 4
+  min_gap_bars: 9
+  zone_atr: 0.35
+  slope_min_atr: 0.03
+  slope_max_atr: 0.8
+  entry_mode: retest
+  reverse: true
+  bounce_need_trend: false
+  approach_bars: 5
+  approach_max_atr: 1.5
+  break_need_lh: false
+  retest_bars: 75
+  confirm_bars: 10
+  stop_mode: atr
+  stop_atr: 10.0
+  risk_min_atr: 0.3
+  risk_max_atr: 14.0
+  risk_min_pts: 3.0
+  sl_atr: 0.0
+  tp_r: 1.0
+  qty1: 1
+  qty2: 2
+  tp2_r: null
+  be_after_tp1: true
+  tp1_lock_r: 0.25
+  trail: false
+  trail_r: 4
+  risk_usd: 1000
+  max_bars: 144
+  trend_ema: null
+  htf_adx_tf: 60
+  htf_adx_len: 14
+  htf_adx_min: 18
+  htf_adx_max: 50

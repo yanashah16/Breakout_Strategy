@@ -117,6 +117,46 @@ class Deployment:
         return [int(round(qk * (b / a))) if a else qk for qk, a, b in zip(q, base, big)]
 
     @property
+    def risk_usd(self) -> float:
+        """$ risk per trade (this deployment's own "risk_usd", else the card's); 0 = trade the quantity boxes."""
+        v = self.cfg.get("risk_usd")
+        if v is None:
+            v = getattr(self.logic, "risk_usd", 0.0)
+        return max(0.0, float(v or 0.0))
+
+    @property
+    def max_contracts(self) -> int:
+        """Safety cap for risk sizing (card data.max_contracts, deployment "max_contracts")."""
+        v = self.cfg.get("max_contracts") or (self.card.get("data") or {}).get("max_contracts") or 20
+        return max(1, int(v))
+
+    def risk_qty(self, q: List[int], risk_pts: float) -> List[int]:
+        """Whole contracts so the trade risks at most risk_usd at its stop: N = floor(risk_usd / (risk x $ per point)),
+        capped at max_contracts, split in the quantity boxes' ratio (largest remainder, ties to leg 1).
+        The research sizes in fractions; live rounds DOWN, and N < 1 skips the trade (never risks more)."""
+        per = risk_pts * self.market.point_value
+        if per <= 0:
+            return [0, 0]
+        n = int(math.floor(self.risk_usd / per + 1e-9))
+        if n > self.max_contracts:
+            log.info(f"[{self.id}] risk sizing {n} contracts capped at {self.max_contracts}")
+            n = self.max_contracts
+        if n < 1:
+            log.info(f"[{self.id}] skipped: 1 {self.market.symbol} risks ${per:,.0f} at the stop, "
+                     f"more than the ${self.risk_usd:,.0f} limit")
+            return [0, 0]
+        w = [max(0, int(x)) for x in q]
+        if w[0] and w[1]:
+            raw = [n * w[0] / sum(w), n * w[1] / sum(w)]
+            out = [int(math.floor(x)) for x in raw]
+            left = n - sum(out)
+            order = sorted((0, 1), key=lambda k: (-(raw[k] - out[k]), k))
+            for k in order[:left]:
+                out[k] += 1
+            return out
+        return [n, 0] if w[0] else [0, n]
+
+    @property
     def can_open(self) -> bool:
         return (self.enabled and not self.cfg.get("stop_after_trade") and not self.attention
                 and not self.account_bad)
@@ -277,6 +317,32 @@ class Deployment:
         mx = self.logic.max_day_trades
         return mx == 0 or self.day["count"] < mx
 
+    def _late(self, p: Plan, px: float, when: str) -> bool:
+        """True = skip this entry: it is being acted on too late to be the trade the backtest took.
+        * stale: the entry minute is older than entry_max_age_minutes (the desk was off / the data feed was
+          down and is catching up on old candles - the order would go out now, at today's price)
+        * chased: the live price is already more than entry_max_chase_r x the trade's risk past the trigger
+          (the market order would fill far from the level the stop and targets are measured from)."""
+        max_age = float(getattr(self.settings, "entry_max_age_minutes", 3) or 0)
+        max_chase = float(getattr(self.settings, "entry_max_chase_r", 0.5) or 0)
+        try:
+            age = (self.now() - pd.Timestamp(when)).total_seconds() / 60.0
+        except (TypeError, ValueError):
+            age = 0.0
+        if max_age > 0 and age > max_age:
+            log.warning(f"[{self.id}] entry SKIPPED: {'BUY' if p.side > 0 else 'SELL'} trigger {px:g} was hit "
+                        f"{age:.0f} min ago ({when}) - too late to enter (limit {max_age:g} min)")
+            return True
+        live, risk = self.signal_px, abs(float(px) - float(p.stop))
+        if max_chase > 0 and live is not None and not math.isnan(live) and risk > 0:
+            past = (float(px) - live) if p.side < 0 else (live - float(px))   # > 0 = price beyond the trigger
+            if past > max_chase * risk:
+                log.warning(f"[{self.id}] entry SKIPPED: {'BUY' if p.side > 0 else 'SELL'} trigger {px:g} but price "
+                            f"is already {live:g} ({past:.2f} pts = {past / risk:.2f}R past it, "
+                            f"limit {max_chase:g}R)")
+                return True
+        return False
+
     def _enter(self, p: Plan, px: float, when: str, contract: tuple):
         if not self.can_open:
             return
@@ -288,15 +354,26 @@ class Deployment:
         if not con_id:
             self.error = "no contract for this market yet"
             return
+        if self._late(p, px, when):
+            self.last_anchor[str(p.side)] = p.anchor      # this pattern is spent: never chase it later
+            self._drop(p)
+            self.save()
+            return
         q = self.leg_qty(p.boost)
         if sum(q) <= 0:
             return
+        if self.risk_usd > 0:
+            q = self.risk_qty(q, abs(float(px) - float(p.stop)))
+            if sum(q) <= 0:
+                return
         tr = Trade(side=p.side, entry=float(px), stop0=float(p.stop), q=q, tp_mode=p.tp_mode, tp_r=p.tp_r,
                    tp_dist=p.tp_dist, tp_price=p.tp_price, tp2_r=p.tp2_r, trail_r=p.trail_r,
-                   entry_minute=bucket(pd.Timestamp(when), 1).isoformat())
+                   entry_minute=bucket(pd.Timestamp(when), 1).isoformat(), lock_px=float(p.lock_px or 0.0))
         if tr.risk <= 0:
             log.info(f"[{self.id}] entry at {px:g} would be past the stop {p.stop:g} - skipped")
             return
+        if p.kind == "market":
+            tr.bars_closed = 1                # entered AT the signal bar's close: that bar is the entry bar
         self.trade = tr
         self.plans = []
         self.day["count"] += 1
@@ -661,12 +738,16 @@ class Deployment:
             else:
                 log.info(f"[{self.id}] trade ended before its entry filled - nothing traded")
             # the bar of the EXIT itself (a stop in a bar's last minute is processed after the bar ended)
-            last = next((e.get("time") for e in reversed(self.trade.exits) if e.get("time")), None)
+            ex = next((e for e in reversed(self.trade.exits) if e.get("time")), None)
             try:
-                t_exit = pd.Timestamp(last) if last else self.now()
+                t_exit = pd.Timestamp(ex["time"]) if ex else self.now()
             except ValueError:
                 t_exit = self.now()
             t_exit = t_exit.tz_convert("UTC") if t_exit.tzinfo else t_exit.tz_localize("UTC")
+            if ex and ex.get("reason") in ("time", "flat"):
+                # a bar-close exit carries the bar's CLOSE time = the next bar's open: it belongs to the bar
+                # that just closed, so the next bar may enter again (backtest: no entry only in the exit's bar)
+                t_exit -= pd.Timedelta(minutes=1)
             self.closed_bar = bucket(t_exit, self.logic.timeframe).isoformat()
             self.trade = None
             self.meta = {}

@@ -33,10 +33,16 @@ from desk import logic as L  # noqa: E402
 from desk.bars import bucket, is_last_minute  # noqa: E402
 from desk.logic.base import BarContext  # noqa: E402
 from desk.logic.patterns import adapter as A  # noqa: E402
+from desk.logic.patterns import lines as LN  # noqa: E402
 from desk.trade import Trade  # noqa: E402
 
 DATA = ROOT.parent / "nq_wae_backtest" / "data"
 CODE = {1: "stop", 2: "tp1", 3: "be", 4: "time", 5: "flat", 6: "open", 7: "trail", 8: "tp2"}
+
+
+def research(logic):
+    """(research module, LiveMarket class) of the card's engine"""
+    return (LN.R2, LN.LinesMarket) if isinstance(logic, LN.LinesLogic) else (A.R, A.LiveMarket)
 
 
 def load_m1(inst: str, start: pd.Timestamp, end: pd.Timestamp, warm_days: int) -> pd.DataFrame:
@@ -76,7 +82,7 @@ class ReplayLogic:
 def reference(logic, mk, start):
     p = logic.p
     cfg = {"data": {"htf_anchor": logic.anchor_cfg}, "backtest": {"start": str(start.date())}, "costs": {"commission": 0}}
-    _, T, _ = A.R.run_one(mk, p, cfg, True)
+    _, T, _ = research(logic)[0].run_one(mk, p, cfg, True)
     t = mk.bars(logic.timeframe)[0]
     trades = {}
     for r in T:
@@ -94,7 +100,8 @@ def live(card, logic, mk, m1, start, tmp):
     DEP.STATE = tmp
     DEP.JOURNAL = tmp / "journal.jsonl"
     mkt = markets.get(card["markets"][0])
-    cfg = {"id": "replay", "strategy": card["id"], "market": mkt.symbol, "qty": card["default_qty"], "enabled": True}
+    cfg = {"id": "replay", "strategy": card["id"], "market": mkt.symbol, "qty": card["default_qty"], "enabled": True,
+           "risk_usd": 0}   # trade path only: risk sizing would skip / resize trades
     d = DEP.Deployment(cfg, card, rl, mkt, FakeHub(), Settings())
     d.path = tmp / f"{card['id']}.json"
     d.save = lambda: None                                      # no disk writes in the replay
@@ -106,9 +113,15 @@ def live(card, logic, mk, m1, start, tmp):
         t = pd.Timestamp(m["opened"]) - pd.Timedelta(minutes=logic.timeframe if logic.kind == 2 else 0)
         return bucket(t, logic.timeframe)
 
+    def exit_bar(e):                        # bar-close exits (time / flat) carry the bar's CLOSE time
+        t = pd.Timestamp(e["time"])
+        if e["reason"] in ("time", "flat"):
+            t -= pd.Timedelta(minutes=1)
+        return bucket(t, logic.timeframe)
+
     def capture():
         m, tr = d.meta, d.trade
-        legs = {e["leg"]: (bucket(pd.Timestamp(e["time"]), logic.timeframe), e["reason"]) for e in m.get("exits") or []}
+        legs = {e["leg"]: (exit_bar(e), e["reason"]) for e in m.get("exits") or []}
         done.append({"bar": entry_bar(m), "side": tr.side,
                      "entry": m["trigger"], "stop": tr.stop0, "legs": legs})
     d._journal_close = capture
@@ -130,7 +143,7 @@ def live(card, logic, mk, m1, start, tmp):
             closed = b
     if d.trade:                                                # still open at the end
         tr, m = d.trade, d.meta
-        legs = {e["leg"]: (bucket(pd.Timestamp(e["time"]), tf), e["reason"]) for e in m.get("exits") or []}
+        legs = {e["leg"]: (exit_bar(e), e["reason"]) for e in m.get("exits") or []}
         for k in (1, 2):
             if tr.open[k - 1]:
                 legs[k] = (bucket(rows.t.iloc[-1], tf), "open")
@@ -189,7 +202,7 @@ def run(card, start, end, window_n=0, verbose=True):
     logic = L.make(card)
     inst = card["signal"]
     m1 = load_m1(inst, start, end, 45)
-    mk = A.LiveMarket(inst, m1, logic.anchor_cfg)
+    mk = research(logic)[1](inst, m1, logic.anchor_cfg)
     t0 = time.time()
     ref = reference(logic, mk, start)
     Trade.STRICT_ENTRY_MINUTE = True

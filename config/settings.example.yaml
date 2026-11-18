@@ -17,6 +17,8 @@ engine:
   warmup_days: 90                   # history loaded at start for the indicators (max 120)
   bar_settle_seconds: 3             # wait after a minute ends before using that candle
   entry_wait_seconds: 60            # an entry not filled in this time is cancelled
+  entry_max_age_minutes: 3          # skip an entry whose trigger was hit longer ago than this (desk off / data down, catching up)
+  entry_max_chase_r: 0.5            # skip an entry when the live price is already this many R past the trigger (0 = off)
   reconcile_minutes: 5              # how often positions are checked against IBKR
   dry_run: false                    # true = practice: no orders are sent (fills simulated at the live price)
   auto_roll: true                   # an open trade moves to the next contract month on the roll date (or when you pick another month)

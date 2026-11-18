@@ -29,6 +29,8 @@ class Settings:
     reconcile_minutes: float
     dry_run: bool
     auto_roll: bool = True
+    entry_max_age_minutes: float = 3.0
+    entry_max_chase_r: float = 0.5
 
 
 def load(path: Path = CONFIG) -> Settings:
@@ -50,4 +52,6 @@ def load(path: Path = CONFIG) -> Settings:
         reconcile_minutes=float(e.get("reconcile_minutes") or 5),
         dry_run=bool(e.get("dry_run")),
         auto_roll=bool(e.get("auto_roll", True)),
+        entry_max_age_minutes=float(e.get("entry_max_age_minutes", 3)),
+        entry_max_chase_r=float(e.get("entry_max_chase_r", 0.5)),
     )

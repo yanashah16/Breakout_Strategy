@@ -43,6 +43,18 @@ One YAML file = one strategy. Pattern Desk loads every `*.yaml` under this folde
 | `gold-double-measured` | Gold Double Top/Bottom | double_GC_mm |
 | `crude-double-measured` | Crude Double Top/Bottom | double_CL_mm |
 
+| **Lines** (`engine: lines`, experimental) | | |
+| `es-multi-touch-break` | S&P Multi-Touch Break | bt/multitouch/Multi_Touch_Break_ES_5m |
+| `nq-multi-touch-break` | Nasdaq Multi-Touch Break | bt/multitouch/Multi_Touch_Break_NQ_5m |
+| `nq-zone-bounce-reverse` | Nasdaq Zone Bounce Reverse | bt/multitouch/Zone_Line_Bounce_Reverse_NQ_5m |
+| `es-zone-retest-reverse` | S&P Zone Retest Reverse | bt/multitouch/Zone_Line_Retest_Reverse_ES_5m_v3 |
+
+The lines cards run on `research/lines_backtest.py` (the 2026-11-10 patterns_backtest.py with the multitouch /
+zoneline setups, vendored verbatim). They enter at the signal candle's close and size by risk: `risk_usd` in the
+card (or `"risk_usd"` in the strategy's row of state/deployments.json) = the most a trade may lose at its stop, in
+whole contracts rounded down, at most `data.max_contracts` (20); a trade where 1 contract risks more is skipped.
+The quantity boxes then only set the Target : Runner split. `risk_usd: null` = trade the boxes as they are.
+
 How the names were chosen: the pattern + what makes the version different from its siblings
 (a sudden spike pole, a strong-trend filter, a young trend, a single runner vs banking part early …).
 The `summary` line of each card says it in one sentence.
