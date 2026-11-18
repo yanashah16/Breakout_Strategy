@@ -8,3 +8,4 @@ data/
 *.log
 *.log.*
 .update_backups/
+tests/_replay_out/

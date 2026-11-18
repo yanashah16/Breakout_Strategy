@@ -12,13 +12,29 @@ strategies work inside.
 
 Keep the black window open while trading. Nothing protects an open trade while Pattern Desk is closed.
 
-## The three pages
+## The pages
 
 | Page | What it is for |
 |---|---|
 | **Strategies** | Every strategy on one line: on/off switch, market (ES, MES …), quantity boxes, what it is doing now. Click a name to read what it does. **Add strategy** runs one on another market too (e.g. ES *and* MES). |
 | **Live** | Every open trade: entry, stop loss, target, price, profit / loss and in plain words what happens next. Below it: entries that are ready to trigger. The **Close everything** button is at the bottom. |
+| **Stocks** | The US-stock box breakout strategy: open stock positions (entry, stop, targets, P&L, what happens next), what every stock's last candle said, closed stock trades, a limit for the total open stock value and its own emergency button. |
 | **History** | Closed trades with their result. |
+
+### US stocks (box breakout, 10m + 15m copies)
+The **US Stocks** group at the top of the Strategies page has two rows - *Stock Box Breakout 10m* and *15m*. Each is
+one switch for all 20 stocks (NVDA AAPL TSLA META AVGO JPM AMZN GOOGL MSFT BRK.B LLY WMT ORCL V NFLX MA XOM COST JNJ HD)
+and an **Amount $** box: the fixed $ amount every trade buys, the same for every stock (empty at the start - a copy
+cannot be switched on without it). Shares = amount / price, split 1 : 1 : 4 over the three legs; rounded up when that
+stays within amount + 5 %, else down. Strong-volume breakouts trade legs 2 + 3 at 1.5x / 2x as backtested (up to
+~1.83x the amount); a reverse keeps its breakout's shares. The two copies each hold their own position per stock, so
+several open trades use several amounts. Orders are sent 09:30-16:00 New York only; positions are held overnight.
+The entry / exit rules are exactly the backtested ones (the backtest itself sized by $1,000 risk per trade).
+* Code: `desk/stocks/` - `core.py` (the rules, a port of the backtest), `bot.py` (one stock in one copy: orders, state),
+  `desk.py` (loop, broker check, API), `copies.py` (the two copies' settings). State: `state/stocks/`.
+* Tests: `python tests/test_stocks_replay.py` (live rules vs the backtest, leg by leg - 6 stocks x 2 copies identical),
+  `python tests/test_stocks_bot.py` (the bot in practice mode on real NVDA minutes, incl. a restart inside a trade).
+* TradingView: `..\nq_wae_backtest\box\pine\box_stocks.pine` (10m) and `box_stocks_15m.pine` (15m).
 
 ### Quantity boxes
 * **Target** = contracts that close at the profit target.

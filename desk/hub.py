@@ -62,21 +62,22 @@ class Hub:
         return self.ok(res)
 
     # ------------------------------------------------------------------ bars
-    def subscribe_bars(self, symbol: str, exchange: str) -> bool:
+    def subscribe_bars(self, symbol: str, exchange: str, sec_type: str = "FUT") -> bool:
         res = self._call("POST", "/bars/subscribe", timeout=30, json={
-            "algo_id": self.algo_id, "symbol": symbol, "exchange": exchange, "sec_type": "FUT",
+            "algo_id": self.algo_id, "symbol": symbol, "exchange": exchange, "sec_type": sec_type,
             "currency": "USD", "duration": "1 D", "bar_size": "1 min", "what_to_show": "TRADES",
             "use_rth": False})
         return self.ok(res) and res.get("status") == "subscribed"
 
     def bars(self, symbol: str) -> Optional[dict]:
-        res = self._call("GET", f"/bars/{symbol}", timeout=10, quiet404=True)
+        res = self._call("GET", f"/bars/{requests.utils.quote(symbol)}", timeout=10, quiet404=True)
         return res if self.ok(res) else None
 
-    def history(self, symbol: str, exchange: str, bar_size: str, duration: str) -> Optional[list]:
+    def history(self, symbol: str, exchange: str, bar_size: str, duration: str, sec_type: str = "FUT",
+                use_rth: bool = False) -> Optional[list]:
         res = self._call("POST", "/history", timeout=150, json={
-            "symbol": symbol, "exchange": exchange, "sec_type": "FUT", "currency": "USD",
-            "bar_size": bar_size, "duration": duration, "what_to_show": "TRADES", "use_rth": False})
+            "symbol": symbol, "exchange": exchange, "sec_type": sec_type, "currency": "USD",
+            "bar_size": bar_size, "duration": duration, "what_to_show": "TRADES", "use_rth": use_rth})
         return res.get("bars") if self.ok(res) else None
 
     def month_history(self, symbol: str, exchange: str, bar_size: str, duration: str,
@@ -145,8 +146,9 @@ class Hub:
         return self.ok(res)
 
     # ------------------------------------------------------------------ account
-    def positions(self, symbol: Optional[str] = None, account: Optional[str] = None) -> Optional[list]:
-        params = {"sec_type": "FUT", "account": account or self.account_id}
+    def positions(self, symbol: Optional[str] = None, account: Optional[str] = None,
+                  sec_type: str = "FUT") -> Optional[list]:
+        params = {"sec_type": sec_type, "account": account or self.account_id}
         if symbol:
             params["symbol"] = symbol
         res = self._call("GET", "/positions", timeout=15, params=params)

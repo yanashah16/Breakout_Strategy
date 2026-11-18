@@ -51,7 +51,11 @@ class AttentionReq(BaseModel):
     how: str
 
 
-def build(engine) -> FastAPI:
+class RiskReq(BaseModel):
+    usd: float
+
+
+def build(engine, stocks=None) -> FastAPI:
     app = FastAPI(title="Pattern Desk", docs_url=None, redoc_url=None)
 
     def run(fn, *a):
@@ -159,6 +163,54 @@ def build(engine) -> FastAPI:
     @app.post("/api/close-everything")
     def close_everything():
         engine.close_everything()
+        if stocks is not None:
+            stocks.close_all()
+        return {"ok": True}
+
+    # ---------------------------------------------------------------- US stocks (desk/stocks)
+    def _stocks():
+        if stocks is None:
+            raise HTTPException(503, "the stock desk is not running")
+        return stocks
+
+    @app.get("/api/stocks/state")
+    def stocks_state():
+        return _stocks().snapshot()
+
+    @app.get("/api/stocks/history")
+    def stocks_history():
+        return {"trades": _stocks().history()}
+
+    @app.post("/api/stocks/copies/{cid}/enable")
+    def stocks_enable(cid: str, req: EnableReq):
+        run(_stocks().set_enabled, cid, req.on, req.mode or "after_trade")
+        return {"ok": True}
+
+    @app.post("/api/stocks/copies/{cid}/capital")
+    def stocks_capital(cid: str, req: RiskReq):
+        run(_stocks().set_capital, cid, req.usd)
+        return {"ok": True}
+
+    @app.post("/api/stocks/exposure")
+    def stocks_exposure(req: RiskReq):
+        run(_stocks().set_exposure, req.usd)
+        return {"ok": True}
+
+    @app.post("/api/stocks/positions/{bid}/close")
+    def stocks_close(bid: str):
+        run(_stocks().close_trade, bid)
+        return {"ok": True}
+
+    @app.post("/api/stocks/positions/{bid}/attention")
+    def stocks_attention(bid: str, req: AttentionReq):
+        if req.how not in ("correct", "closed_by_hand"):
+            raise HTTPException(400, "how must be correct | closed_by_hand")
+        run(_stocks().resolve_attention, bid, req.how)
+        return {"ok": True}
+
+    @app.post("/api/stocks/close-all")
+    def stocks_close_all():
+        _stocks().close_all()
         return {"ok": True}
 
     @app.post("/api/reload")
@@ -178,5 +230,9 @@ def build(engine) -> FastAPI:
     @app.get("/history")
     def page_history():
         return FileResponse(STATIC / "history.html")
+
+    @app.get("/stocks")
+    def page_stocks():
+        return FileResponse(STATIC / "stocks.html")
 
     return app

@@ -57,10 +57,16 @@ def main():
     log.info(f"{len(engine.cards)} strategies in the catalog, {len(engine.deps)} rows, "
              f"{sum(1 for d in engine.deps.values() if d.enabled)} switched on")
     engine.start()
-    app = build(engine)
+    from desk.stocks.desk import StockDesk
+    stocks = StockDesk(engine)
+    stocks.start()
+    log.info(f"Stocks: {len(stocks.bots)} stock rows, copies on: "
+             f"{[c for c in stocks.cfg['copies'] if stocks.enabled(c)] or 'none'}")
+    app = build(engine, stocks)
     try:
         uvicorn.run(app, host=s.host, port=s.port, log_level="warning")
     finally:
+        stocks.stop()
         engine.stop()
         log.info("Pattern Desk stopped")
 

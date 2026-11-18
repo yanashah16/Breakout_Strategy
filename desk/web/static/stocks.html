@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stocks · Pattern Desk</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232f6fed'/%3E%3Cpath d='M4 17l5-6 4 3 5-8' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body data-page="stocks">
+  <main class="page">
+    <div id="banner"></div>
+    <div class="page-head">
+      <div class="grow">
+        <h1>Stocks</h1>
+        <p>The stock box breakout strategy (10m + 15m copies): open positions, what each stock is doing, and closed trades. Switch the copies on and off on the <a href="/">Strategies</a> page.</p>
+      </div>
+    </div>
+    <div class="toolbar" id="s-copies"></div>
+    <div class="tiles" id="s-tiles"></div>
+
+    <div class="section-title"><h2>Open stock trades</h2></div>
+    <div id="s-trades"><div class="empty">Loading…</div></div>
+
+    <div class="section-title"><h2>Watching</h2><span class="muted">the last candle of every stock and why it did not trade</span></div>
+    <div id="s-watch"></div>
+
+    <div class="section-title"><h2>Closed stock trades</h2></div>
+    <div id="s-history"></div>
+
+    <div class="danger-zone">
+      <div class="field" style="max-width:420px"><label for="s-exposure">Limit for the value of all open stock positions ($, 0 = no limit)</label>
+        <input id="s-exposure" type="number" min="0" step="10000" value="0">
+        <div class="hint">A new trade is skipped while the open stock positions (both copies) are worth more than this. Positions are held overnight - check your margin.</div></div>
+      <p><b>Emergency.</b> Switches both stock copies off and closes every stock position Pattern Desk opened. Shares you or other programs bought are never touched.</p>
+      <button class="btn danger" id="s-panic">Close all stock trades</button>
+    </div>
+    <p class="source" id="s-data" style="margin-top:18px"></p>
+  </main>
+  <script src="/static/stocks.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

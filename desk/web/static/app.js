@@ -73,7 +73,7 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") { closeDialo
 
 /* ------------------------------------------------------------------ shell */
 function shell() {
-  const nav = [["/", "Strategies", "strategies"], ["/live", "Live", "live"], ["/history", "History", "history"]];
+  const nav = [["/", "Strategies", "strategies"], ["/live", "Live", "live"], ["/stocks", "Stocks", "stocks"], ["/history", "History", "history"]];
   document.body.insertAdjacentHTML("afterbegin", `
     <header class="topbar"><div class="topbar-in">
       <div class="brand"><div class="brand-mark">${ICON.mark}</div><span>Pattern Desk</span></div>
@@ -662,6 +662,7 @@ const PAGES = {
   strategies: { init: initStrategies, update: renderStrategies },
   live: { init: initLive, update: renderLive },
   history: { init: initHistory, update: () => {} },
+  stocks: { init: () => initStocks(), update: () => renderStocks() },
 };
 shell();
 PAGES[PAGE].init();
