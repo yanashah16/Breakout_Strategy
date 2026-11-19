@@ -114,6 +114,24 @@ class Hub:
             time.sleep(1.0 + attempt)
         return None
 
+    def qualify(self, contract: dict, attempts: int = 3) -> Optional[int]:
+        """con_id straight from IBKR's contract lookup (hub /price/subscribe) - no quote needed.
+
+        resolve() reads the con_id off a /price answer, and the hub leaves out every contract that has
+        no quote yet: a stock outside regular hours, or one the account has no live data for, never
+        "resolved" although IBKR knew it. /price/subscribe answers with the qualified con_id either way."""
+        for attempt in range(attempts):
+            res = self._call("POST", "/price/subscribe", timeout=30,
+                             json={"algo_id": self.algo_id, "contracts": [contract]})
+            if self.ok(res):
+                for d in (res.get("results") or {}).values():
+                    if isinstance(d, dict) and d.get("con_id"):
+                        return int(d["con_id"])
+                self.last_error = f"IBKR does not know {contract.get('symbol')} ({contract.get('sec_type')})"
+                return None                          # the hub answered: IBKR has no such contract
+            time.sleep(2.0 * (attempt + 1))
+        return None
+
     # ------------------------------------------------------------------ orders
     def order_key(self, ref: str, account: Optional[str] = None) -> str:
         return f"{self.algo_id}_{account or self.account_id}_{ref}"

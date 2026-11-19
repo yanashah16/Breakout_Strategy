@@ -204,7 +204,8 @@ function renderStocks() {
   const ex = $("#s-exposure");
   if (ex && document.activeElement !== ex && !ex.dataset.dirty) ex.value = s.max_exposure_usd || 0;
   const loading = (s.warming || []).length;
-  $("#s-data").textContent = `Account ${s.account || "—"}${s.dry_run ? " · practice mode" : ""}` + (loading ? ` · loading ${loading} stock${loading === 1 ? "" : "s"}…` : "");
+  $("#s-data").textContent = `Account ${s.account || "—"}${s.dry_run ? " · practice mode" : ""}` + (loading ? ` · loading ${loading} stock${loading === 1 ? "" : "s"}…` : "")
+    + Object.entries(s.failed || {}).map(([k, v]) => ` · ${k}: ${v}`).join("");
 }
 
 async function stkClose(id, name) {

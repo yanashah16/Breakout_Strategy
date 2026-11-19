@@ -62,6 +62,7 @@ class StockBot:
         self._rejects = 0
         self._day, self._dh, self._dl, self._dc = None, -math.inf, math.inf, math.nan
         self._unanswered = None
+        self._late_logged = None
         self.restore()
 
     # ------------------------------------------------------------------ persistence
@@ -170,10 +171,27 @@ class StockBot:
         self._dh, self._dl, self._dc = max(self._dh, br["h"]), min(self._dl, br["l"]), br["c"]
         bar = C.Bar(t, br["o"], br["h"], br["l"], br["c"], br["v"])
         ok = enabled and not self.attention and not self.error.startswith("account")
+        late = self._late_minutes(br["t"])
+        if ok and late is not None:
+            ok = False                                  # a stale candle (delayed data / feed gap): exits only
+            if self._late_logged != br["t"]:
+                self._late_logged = br["t"]
+                log.warning(f"[{self.id}] candle {t:%H:%M} closed {late:.0f} min ago - no new entry from it "
+                            f"(limit {self.settings.entry_max_age_minutes:g} min)")
         ev = self.core.on_bar_close(bar, upto or t.isoformat(), allow_entry=ok)
         self.last_bar = t.isoformat()
         self._events(ev)
         self.save()
+
+    def _late_minutes(self, bar_open_utc: pd.Timestamp) -> Optional[float]:
+        """Minutes since this chart bar closed, when that is more than entry_max_age_minutes (else None).
+        IBKR serves stock data 15 minutes late to an account without live US-stock data (message 10089) - the
+        rules would then enter breakouts that happened a quarter of an hour ago at today's price."""
+        limit = float(getattr(self.settings, "entry_max_age_minutes", 0) or 0)
+        if limit <= 0:
+            return None
+        age = (pd.Timestamp.now(tz="UTC") - (bar_open_utc + pd.Timedelta(minutes=self.tf))) / pd.Timedelta(minutes=1)
+        return age if age > limit else None
 
     def on_price(self, px: Optional[float], now_ny: dt.datetime):
         self.px = px

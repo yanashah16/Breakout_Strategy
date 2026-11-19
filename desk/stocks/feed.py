@@ -38,6 +38,8 @@ def ny(t: pd.Timestamp) -> dt.datetime:
 
 class StockFeed:
     SETTLE = 3.0                  # seconds into a minute before the previous one is read
+    DELAY_WARN_MIN = 5.0          # newest minute this far behind the clock = delayed data
+    RESUB_SECS = 60.0             # wait between re-subscribes of a stream the hub has lost
 
     def __init__(self, sym: str):
         self.sym = sym
@@ -50,6 +52,7 @@ class StockFeed:
         self.last_fetch: Optional[dt.datetime] = None
         self.current_price: Optional[float] = None
         self.con_id: Optional[int] = None
+        self._next_sub = 0.0
 
     def contract(self) -> dict:
         c = {"symbol": self.ib, "sec_type": "STK", "exchange": "SMART", "currency": "USD"}
@@ -95,13 +98,16 @@ class StockFeed:
         """New completed regular-hours minutes since the last call (oldest first)."""
         data = hub.bars(self.ib)
         if not data or not data.get("bars"):
-            hub.subscribe_bars(self.ib, "SMART", sec_type="STK")
+            if time.monotonic() >= self._next_sub:          # at most once a minute, not on every 2 s tick
+                self._next_sub = time.monotonic() + self.RESUB_SECS
+                hub.subscribe_bars(self.ib, "SMART", sec_type="STK")
             return []
         self.last_fetch = now_utc.tz_convert(NY).tz_localize(None).to_pydatetime().replace(second=0, microsecond=0)
         if data.get("current_price"):
             self.current_price = float(data["current_price"])
         live = rth(frame(data["bars"]))
         live = live[live.t <= now_utc - pd.Timedelta(seconds=60 + self.SETTLE)]
+        self._check_delay(live, now_utc)
         if live.empty:
             return []
         last = self.m1.t.iloc[-1] if len(self.m1) else None
@@ -113,6 +119,28 @@ class StockFeed:
             if self.exact_from is None:
                 self.exact_from = new.t.iloc[0]
         return [r for _, r in new.iterrows()]
+
+
+    def _check_delay(self, live: pd.DataFrame, now_utc: pd.Timestamp):
+        """Regular hours only: the newest completed minute should be the one that just ended. IBKR sends stock
+        data 15 minutes late to an account without live US-stock data - say so instead of trading on it."""
+        ny_now = now_utc.tz_convert(NY)
+        m = ny_now.hour * 60 + ny_now.minute
+        if ny_now.weekday() >= 5 or not 570 + self.DELAY_WARN_MIN <= m < 960:
+            return
+        if len(live):
+            lag = (now_utc - live.t.iloc[-1]) / pd.Timedelta(minutes=1) - 1
+        else:                                                    # no regular-hours minute at all yet today
+            lag = m - 570 if self.m1.empty or self.m1.t.iloc[-1].tz_convert(NY).date() < ny_now.date() else None
+        if lag is not None and lag >= self.DELAY_WARN_MIN:
+            msg = (f"data {lag:.0f} min behind - IBKR is sending delayed prices (no live US-stock data for the API "
+                   f"on this account?). No new trades until it is live.")
+            if not self.error.startswith("data "):
+                log.warning(f"[{self.sym}] {msg}")
+            self.error = msg
+        elif self.error.startswith("data "):
+            log.info(f"[{self.sym}] data is live again")
+            self.error = ""
 
 
 def bucket(t: pd.Timestamp, tf: int) -> pd.Timestamp:

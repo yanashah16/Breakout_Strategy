@@ -15,9 +15,11 @@ import logging
 import threading
 import time
 import traceback
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Dict, List, Optional
 
 import pandas as pd
+import requests.adapters
 
 from desk.hub import Hub
 from desk.stocks.bot import DIR, JOURNAL, StockBot
@@ -27,7 +29,7 @@ from desk.store import read_json, read_jsonl, write_json
 
 log = logging.getLogger("desk.stocks")
 CONFIG = DIR / "config.json"
-_WARM_LOCK = threading.Lock()
+_WARM_LOCK = threading.BoundedSemaphore(3)   # stocks warming at once (one at a time took ~25 min for 20 stocks)
 
 
 def now_ny() -> dt.datetime:
@@ -40,15 +42,24 @@ class StockDesk:
         s = engine.s
         self.s = s
         self.hub = Hub(s.hub_url, s.hub_api_key, s.algo_id, s.account_id)     # own client: own thread
+        # stock bar fetches run in parallel on this (stocks-only) client: room for their connections
+        for scheme in ("http://", "https://"):
+            self.hub.s.mount(scheme, requests.adapters.HTTPAdapter(pool_connections=4, pool_maxsize=32))
         self.lock = threading.RLock()
         self.cfg = self._load_cfg()
         self.feeds: Dict[str, StockFeed] = {}
         self.bots: Dict[str, StockBot] = {}
         self._warming: set = set()
+        self._failed: Dict[str, str] = {}      # stock -> why its last warm-up failed (shown on the page)
         self._outside: Dict[str, int] = {}
         self._mismatch: Dict[str, int] = {}
         self._next_reconcile = 0.0
         self.running = False
+        # Hub calls for bars and prices run outside self.lock: a slow hub (an IBKR data reconnect makes it rebuild
+        # every bar stream, ~30 s each) used to hold the lock for many minutes, freezing stops, orders and the page.
+        self._pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="stock-bars")
+        self._fetch: Dict[str, Future] = {}      # stock -> its bar fetch in flight (one at a time per stock)
+        self._quotes: Optional[tuple] = None     # (con_id -> feed, hub prices) fetched for the next cycle
         for cid in COPIES:
             for sym in self.cfg["stocks"]:
                 self._bot(cid, sym)
@@ -157,16 +168,33 @@ class StockDesk:
 
     def stop(self):
         self.running = False
+        self._pool.shutdown(wait=False, cancel_futures=True)
 
     def _run(self):
         while self.running:
             t0 = time.monotonic()
             try:
+                self._io()
                 with self.lock:
                     self.cycle()
             except Exception:
                 log.error("stocks cycle failed:\n" + traceback.format_exc())
             time.sleep(max(0.5, self.s.tick_seconds - (time.monotonic() - t0)))
+
+    def _io(self):
+        """Network part of a cycle, without the lock: start bar fetches that are due, read the prices."""
+        if not self.engine.hub_state.get("ok"):
+            return
+        now = pd.Timestamp.now(tz="UTC")
+        now_et = now.tz_convert(NY).tz_localize(None).to_pydatetime()
+        with self.lock:
+            syms = sorted({b.sym for b in self.active()})
+            feeds = {s: self.feeds[s] for s in syms if s in self.feeds}
+        for sym, f in feeds.items():
+            if f.ready and sym not in self._fetch and f.due(now_et):
+                self._fetch[sym] = self._pool.submit(f.update, self.hub, now)
+        want = {f.con_id: f for f in feeds.values() if f.con_id}
+        self._quotes = (want, self.hub.prices([f.contract() for f in want.values()])) if want else None
 
     def active(self) -> List[StockBot]:
         return [b for b in self.bots.values() if self.enabled(b.copy) or b.busy]
@@ -181,20 +209,24 @@ class StockDesk:
             self._feed(sym)
         now = pd.Timestamp.now(tz="UTC")
         now_et = now.tz_convert(NY).tz_localize(None).to_pydatetime()
-        # 1. bars
-        for sym in syms:
-            f = self.feeds.get(sym)
-            if f is None or not f.ready or not f.due(now_et):
+        # 1. bars (fetched in the background by _io; only the finished ones are used, nothing waits here)
+        for sym, fut in list(self._fetch.items()):
+            if not fut.done():
                 continue
-            rows = f.update(self.hub, now)
+            del self._fetch[sym]
+            try:
+                rows = fut.result()
+            except Exception:
+                log.error(f"[{sym}] bar update failed:\n" + traceback.format_exc())
+                continue
             bots = [b for b in act if b.sym == sym and b.ready]
             for row in rows:
                 for b in bots:
                     self._guard(b, b.on_minute, row, self.enabled(b.copy))
         # 2. prices (stocks with a position or a working order)
-        want = {self.feeds[s].con_id: self.feeds[s] for s in syms if s in self.feeds and self.feeds[s].con_id}
+        want, q = self._quotes or ({}, {})
+        self._quotes = None
         if want:
-            q = self.hub.prices([f.contract() for f in want.values()])
             for cid, p in q.items():
                 f = want.get(int(cid))
                 if f is None:
@@ -240,22 +272,31 @@ class StockDesk:
             ok = False
             try:
                 with _WARM_LOCK:
-                    cid = self.hub.resolve({"symbol": f.ib, "sec_type": "STK", "exchange": "SMART", "currency": "USD"})
+                    spec = {"symbol": f.ib, "sec_type": "STK", "exchange": "SMART", "currency": "USD"}
+                    cid = self.hub.qualify(spec) or self.hub.resolve(spec)
                     f.con_id = cid
+                    if not cid:
+                        f.error = self.hub.last_error or "contract not found"
+                        log.warning(f"[{sym}] no con_id from the hub: {f.error}")
                     ok = bool(cid) and f.warmup(self.hub)
                     if ok:
                         self.hub.subscribe_bars(f.ib, "SMART", sec_type="STK")
             except Exception:
                 log.error(f"[{sym}] warm-up failed:\n" + traceback.format_exc())
             if ok:
+                # The bots' warm-up (~10 s per stock) runs outside the desk lock: holding it froze the stock loop
+                # (prices, stops, orders of the stocks already trading) and the Stocks page meanwhile. Safe, because
+                # the loop leaves a stock's bots alone until its feed is in self.feeds.
+                for b in [b for b in list(self.bots.values()) if b.sym == sym]:
+                    self._guard(b, b.warmup, f.m1, f.daily, f.exact_from)
                 with self.lock:
                     self.feeds[sym] = f
-                    for b in self.bots.values():
-                        if b.sym == sym:
-                            self._guard(b, b.warmup, f.m1, f.daily, f.exact_from)
-                    self.engine.event(f"Stocks: {sym} market data ready")
+                    self._failed.pop(sym, None)
+                self.engine.event(f"Stocks: {sym} market data ready")
             else:
                 f.error = f.error or "contract not found"
+                self._failed[sym] = f.error
+                log.warning(f"[{sym}] not ready ({f.error}) - trying again in a minute")
                 time.sleep(60)
             self._warming.discard(sym)
         threading.Thread(target=warm, name=f"warm-{sym}", daemon=True).start()
@@ -283,7 +324,7 @@ class StockDesk:
             for p in pos:
                 if (cid and int(p.get("con_id") or 0) == int(cid)) or str(p.get("symbol", "")).upper() == (f.ib if f else sym):
                     acct = [a for a in p.get("accounts") or [] if a.get("account") == self.account]
-                    broker = int(round(float(acct[0]["qty"]))) if acct else int(round(float(p.get("qty") or 0)))
+                    broker = int(round(float(acct[0]["qty"]))) if acct else int(round(float(p.get("total_qty") or p.get("qty") or 0)))
             ours = sum(b.held for b in bots)
             before = self._outside.get(sym)
             out = broker - ours
@@ -323,6 +364,8 @@ class StockDesk:
             waiting = [s for s in self.cfg["stocks"] if s not in self.feeds]
             return {"copies": copies, "positions": sorted(pos, key=lambda x: (x["stock"], x["copy"])),
                     "stocks": self.cfg["stocks"], "feeds": feeds, "warming": waiting if any(self.enabled(c) for c in COPIES) else [],
+                    "failed": {**self._failed, **{s: f.error for s, f in self.feeds.items() if f.error}}
+                              if any(self.enabled(c) for c in COPIES) else {},
                     "exposure": sum(p["notional"] for p in pos), "max_exposure_usd": self.cfg["max_exposure_usd"],
                     "account": self.account, "dry_run": self.s.dry_run,
                     "how_it_enters": HOW_IT_ENTERS, "how_it_exits": HOW_IT_EXITS,
