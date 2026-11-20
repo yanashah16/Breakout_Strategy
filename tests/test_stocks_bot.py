@@ -25,6 +25,7 @@ from desk.stocks.feed import rth            # noqa: E402
 from desk.store import read_jsonl           # noqa: E402
 
 DATA = ROOT.parent / "nq_wae_backtest" / "data"
+COPY = sys.argv[1] if len(sys.argv) > 1 else "box10"
 
 
 class FakeHub:
@@ -53,8 +54,8 @@ def run():
     start, mid, end = pd.Timestamp("2025-01-01", tz="UTC"), pd.Timestamp("2025-04-01", tz="UTC"), pd.Timestamp("2025-07-01", tz="UTC")
     hist = m1[(m1.t >= start - pd.Timedelta(days=45)) & (m1.t < start)]
     days = daily(m1[m1.t < start])
-    bot = B.StockBot("box10", "NVDA", None, FakeHub(), settings, room=lambda n: True, risk_usd=1000)
-    bot.path = tmp / "box10_NVDA.json"
+    bot = B.StockBot(COPY, "NVDA", None, FakeHub(), settings, room=lambda n: True, risk_usd=1000)
+    bot.path = tmp / f"{COPY}_NVDA.json"
     bot.warmup(hist, days, hist.t.iloc[0])
     live = m1[(m1.t >= start) & (m1.t < end)]
     bad = 0
@@ -68,7 +69,7 @@ def run():
             was = (bot.core.pos.side, bot.held)
             bot.save()
             hist2 = m1[(m1.t >= r.t - pd.Timedelta(days=45)) & (m1.t < r.t)]
-            bot2 = B.StockBot("box10", "NVDA", None, FakeHub(), settings, room=lambda n: True, risk_usd=1000)
+            bot2 = B.StockBot(COPY, "NVDA", None, FakeHub(), settings, room=lambda n: True, risk_usd=1000)
             bot2.path = bot.path
             bot2.restore()
             bot2.warmup(hist2, daily(m1[m1.t < r.t.normalize()]), hist2.t.iloc[0])

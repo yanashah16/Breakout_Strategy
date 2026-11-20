@@ -13,7 +13,7 @@
     <div class="page-head">
       <div class="grow">
         <h1>Stocks</h1>
-        <p>The stock box breakout strategy (10m + 15m copies): open positions, what each stock is doing, and closed trades. Switch the copies on and off on the <a href="/">Strategies</a> page.</p>
+        <p>The US-stock strategies (box breakout 10m + 15m, pole &amp; flag 10m): open positions, what each stock is doing, and closed trades. Switch them on and off on the <a href="/">Strategies</a> page.</p>
       </div>
     </div>
     <div class="toolbar" id="s-copies"></div>
@@ -31,8 +31,8 @@
     <div class="danger-zone">
       <div class="field" style="max-width:420px"><label for="s-exposure">Limit for the value of all open stock positions ($, 0 = no limit)</label>
         <input id="s-exposure" type="number" min="0" step="10000" value="0">
-        <div class="hint">A new trade is skipped while the open stock positions (both copies) are worth more than this. Positions are held overnight - check your margin.</div></div>
-      <p><b>Emergency.</b> Switches both stock copies off and closes every stock position Pattern Desk opened. Shares you or other programs bought are never touched.</p>
+        <div class="hint">A new trade is skipped while the open stock positions (all stock strategies together) are worth more than this. Positions are held overnight - check your margin.</div></div>
+      <p><b>Emergency.</b> Switches all stock strategies off and closes every stock position Pattern Desk opened. Shares you or other programs bought are never touched.</p>
       <button class="btn danger" id="s-panic">Close all stock trades</button>
     </div>
     <p class="source" id="s-data" style="margin-top:18px"></p>

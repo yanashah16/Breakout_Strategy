@@ -1,5 +1,5 @@
 """
-StockDesk: runs the stock box strategy (two copies x the stock list) next to the futures engine, in the same
+StockDesk: runs the stock strategies (box 10m + 15m, pole & flag 10m; each copy x its stock list) next to the futures engine, in the same
 process and with the same hub, account and practice-mode settings. Its own thread, its own lock.
 
 Config: state/stocks/config.json   {"copies": {"box10": {"enabled", "capital_usd"}, ...}, "stocks": [...],
@@ -23,7 +23,7 @@ import requests.adapters
 
 from desk.hub import Hub
 from desk.stocks.bot import DIR, JOURNAL, StockBot
-from desk.stocks.copies import COPIES, HOW_IT_ENTERS, HOW_IT_EXITS, STOCKS
+from desk.stocks.copies import ALL_STOCKS, COPIES, HOW_IT_ENTERS, HOW_IT_EXITS
 from desk.stocks.feed import NY, StockFeed
 from desk.store import read_json, read_jsonl, write_json
 
@@ -61,7 +61,7 @@ class StockDesk:
         self._fetch: Dict[str, Future] = {}      # stock -> its bar fetch in flight (one at a time per stock)
         self._quotes: Optional[tuple] = None     # (con_id -> feed, hub prices) fetched for the next cycle
         for cid in COPIES:
-            for sym in self.cfg["stocks"]:
+            for sym in self.copy_stocks(cid):
                 self._bot(cid, sym)
 
     # ------------------------------------------------------------------ config
@@ -73,10 +73,14 @@ class StockDesk:
             return float(v) if v else None
         out = {"copies": {k: {"enabled": bool((copies.get(k) or {}).get("enabled", False)) and cap(k) is not None,
                               "capital_usd": cap(k)} for k in COPIES},
-               "stocks": [x for x in (c.get("stocks") or STOCKS)],
+               "stocks": list(dict.fromkeys([x for x in (c.get("stocks") or ALL_STOCKS)] + [x for x in ALL_STOCKS if x not in (c.get("stocks") or [])])),
                "max_exposure_usd": float(c.get("max_exposure_usd") or 0)}
         write_json(CONFIG, out)
         return out
+
+    def copy_stocks(self, cid: str) -> List[str]:
+        """The stocks this copy trades (its backtested list, e.g. the flag copy has no BRK.B)."""
+        return [x for x in COPIES[cid]["stocks"] if x in self.cfg["stocks"]]
 
     def save_cfg(self):
         write_json(CONFIG, self.cfg)
@@ -103,6 +107,10 @@ class StockDesk:
                 raise ValueError("Enter the amount per trade first")
             self.cfg["copies"][cid]["enabled"] = bool(on)
             self.save_cfg()
+            if not on:
+                for b in self._copy_bots(cid):           # flag: an armed stop entry must not fire any more
+                    if getattr(b.core, "pend", None):
+                        b.core.pend, b.core.pend_bar = {}, None
             if not on and mode == "close_now":
                 for b in self._copy_bots(cid):
                     b.close_now("shutdown")
@@ -355,6 +363,8 @@ class StockDesk:
                 bots = self._copy_bots(cid)
                 open_ = [b for b in bots if b.held or b.core.pos.side]
                 copies.append({"id": cid, "name": cp["name"], "summary": cp["summary"], "backtest": cp["backtest"],
+                               "kind": cp["kind"], "legs": cp["legs"], "stock_list": self.copy_stocks(cid),
+                               "how_it_enters": cp["how_it_enters"], "how_it_exits": cp["how_it_exits"],
                                "enabled": self.enabled(cid), "capital_usd": self.cfg["copies"][cid]["capital_usd"],
                                "open": len(open_), "stocks": len(bots),
                                "ready": sum(1 for b in bots if b.ready),
@@ -376,7 +386,8 @@ class StockDesk:
         out = []
         for b in self.bots.values():
             if b.ready and not (b.held or b.core.pos.side) and self.enabled(b.copy):
-                out.append({"id": b.id, "stock": b.sym, "copy": b.copy, **(b.core.last or {})})
+                out.append({"id": b.id, "stock": b.sym, "copy": b.copy,
+                            **{k: (None if isinstance(v, float) and v != v else v) for k, v in (b.core.last or {}).items()}})
         return sorted(out, key=lambda x: (x["stock"], x["copy"]))
 
     @staticmethod

@@ -18,7 +18,7 @@ Keep the black window open while trading. Nothing protects an open trade while P
 |---|---|
 | **Strategies** | Every strategy on one line: on/off switch, market (ES, MES …), quantity boxes, what it is doing now. Click a name to read what it does. **Add strategy** runs one on another market too (e.g. ES *and* MES). |
 | **Live** | Every open trade: entry, stop loss, target, price, profit / loss and in plain words what happens next. Below it: entries that are ready to trigger. The **Close everything** button is at the bottom. |
-| **Stocks** | The US-stock box breakout strategy: open stock positions (entry, stop, targets, P&L, what happens next), what every stock's last candle said, closed stock trades, a limit for the total open stock value and its own emergency button. |
+| **Stocks** | The US-stock strategies (box breakout 10m + 15m, pole & flag 10m): open stock positions (entry, stop, targets, P&L, what happens next), what every stock's last candle said, closed stock trades, a limit for the total open stock value and its own emergency button. |
 | **History** | Closed trades with their result. |
 
 ### US stocks (box breakout, 10m + 15m copies)
@@ -35,6 +35,23 @@ The entry / exit rules are exactly the backtested ones (the backtest itself size
 * Tests: `python tests/test_stocks_replay.py` (live rules vs the backtest, leg by leg - 6 stocks x 2 copies identical),
   `python tests/test_stocks_bot.py` (the bot in practice mode on real NVDA minutes, incl. a restart inside a trade).
 * TradingView: `..\nq_wae_backtest\box\pine\box_stocks.pine` (10m) and `box_stocks_15m.pine` (15m).
+
+### US stocks (pole & flag, 10m)
+A third row in the **US Stocks** group, *Stock Pole & Flag 10m*: one switch for its 19 stocks (the box list without
+BRK.B: AAPL AMZN AVGO COST GOOGL HD JNJ JPM LLY MA META MSFT NFLX NVDA ORCL TSLA V WMT XOM) and its own **Amount $**
+box (shares = amount / price, split 1 : 2 over TP1 leg + runner, rounded like the box copies). It holds its own position
+per stock, next to the box copies.
+* Entry: a pole (>= 2 ATR in <= 7 candles and >= 0.35 x the daily range) + a flag (1-15 candles) arms a buy stop
+  1 cent above the flag high for the next 10-minute candle only, only with the 60-minute trend (clock-hour candles
+  close above a rising EMA 50) and only for candles opening 10:00-15:00. The order is sent the moment the price
+  crosses the level. Shorts: strict own rules, rare.
+* Exits: stop 0.5 ATR beyond the flag; 1/3 at 3 R, then the runner's stop goes to the entry and trails 6 R behind
+  the best price. Held overnight.
+* Backtest (19 stocks, 2016-11 -> 2026-10, $1,000 risk): +$2.67M, DD $95k, net/DD 28.1, ~400 trades per stock.
+* Code: `desk/stocks/flag_core.py` (the rules, a port of the research flag backtest; `bot.py` / `desk.py` are shared
+  with the box copies). Tests: `python tests/test_stocks_flag_replay.py [SYMBOLS]` (live rules vs the backtest, leg
+  by leg) and `python tests/test_stocks_bot.py flag10` (practice mode on real NVDA minutes, incl. a restart).
+* TradingView: `..\nq_wae_backtest\patterns\flag_stocks_10m\flag_stocks_10m.pine`.
 
 ### Quantity boxes
 * **Target** = contracts that close at the profit target.
