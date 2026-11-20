@@ -1,4 +1,4 @@
-/* Pattern Desk - US stocks (the box breakout strategy, 10m + 15m copies).
+/* Pattern Desk - US stocks (box breakout 10m + 15m copies, pole & flag 10m copy).
    Loaded before app.js; uses its helpers ($, api, esc, money, tone, toast, dialogs) at call time. */
 "use strict";
 
@@ -14,6 +14,8 @@ async function stkPoll() {
 }
 
 function stkCopy(id) { return STK.copies.find(c => c.id === id); }
+const STK_LABEL = { box10: "Box 10m", box15: "Box 15m", flag10: "Flag 10m" };
+function stkLabel(id) { return STK_LABEL[id] || id; }
 
 function stkStatus(c) {
   if (!c.enabled && !c.open) return { tone: "off", text: c.capital_usd ? "Off" : "Off · enter the amount per trade" };
@@ -37,8 +39,8 @@ function renderStockRows() {
           <div class="c-name" style="min-width:0;cursor:pointer">
             <div class="s-name"><span class="nm">${esc(c.name)}</span></div>
             <div class="s-sub">${esc(c.summary)}</div></div>
-          <div class="c-mkt"><span class="mkt" title="${esc(STK.stocks.join(", "))}">${STK.stocks.length} stocks</span><div class="mkt-sub">${esc(STK.account || "")}</div></div>
-          <div class="c-qty qty"><label title="Every trade buys about this much stock, on every stock (all three legs together)">Amount $ <input type="number" min="1000" step="1000" data-risk value="${c.capital_usd || ""}" placeholder="per trade" style="width:100px"></label><span class="saved">Saved</span></div>
+          <div class="c-mkt"><span class="mkt" title="${esc((c.stock_list || STK.stocks).join(", "))}">${(c.stock_list || STK.stocks).length} stocks</span><div class="mkt-sub">${esc(STK.account || "")}</div></div>
+          <div class="c-qty qty"><label title="Every trade buys about this much stock, on every stock (all legs together)">Amount $ <input type="number" min="1000" step="1000" data-risk value="${c.capital_usd || ""}" placeholder="per trade" style="width:100px"></label><span class="saved">Saved</span></div>
           <div class="c-status"><span class="pill"><span class="pdot"></span><span class="ptxt"></span></span></div>
           <div class="c-menu"><button class="icon-btn" aria-label="More">${ICON.more}</button></div>
         </div>`).join("")}</div></section>`;
@@ -94,9 +96,9 @@ async function stkToggle(id) {
   if (!c.enabled) {
     if (!c.capital_usd) { toast("Enter the amount per trade in the Amount $ box first", true); return; }
     const ok = await confirmDialog({ title: `Switch on ${c.name}?`, ok: "Switch on",
-      text: `It will watch ${STK.stocks.length} stocks and trade in <b>${esc(STK.account || "the selected account")}</b>.
-        Every trade buys about <b>${usd(c.capital_usd)}</b> of stock (up to 5 % more to keep the legs in 1 : 1 : 4;
-        strong-volume breakouts up to about ${usd(c.capital_usd * 1.83)}).<br><br>Each open trade uses its own amount and positions are
+      text: `It will watch ${(c.stock_list || STK.stocks).length} stocks and trade in <b>${esc(STK.account || "the selected account")}</b>.
+        Every trade buys about <b>${usd(c.capital_usd)}</b> of stock (up to 5 % more to keep the legs in ${esc(c.legs || "1 : 1 : 4")}${c.kind === "box" ? `;
+        strong-volume breakouts up to about ${usd(c.capital_usd * 1.83)}` : ""}).<br><br>Each open trade uses its own amount and positions are
         held overnight, so several open trades together can use many times this amount.` });
     if (!ok) return;
     return stkSetEnabled(id, true);
@@ -125,11 +127,11 @@ function stkAbout(id) {
   const c = stkCopy(id);
   openDialog(`${dialogHead(c.name)}<div class="d-body">
     <p>${esc(c.summary)}</p>
-    <h4>How it enters</h4><p>${esc(STK.how_it_enters)}</p>
-    <h4>How it exits</h4><p>${esc(STK.how_it_exits)}</p>
-    <h4>Backtest (2016-11 to 2026-10, $1,000 risk per trade)</h4><p>${esc(c.backtest)}. Both copies together: +$5.07M, drawdown $130k,
-      net / drawdown 38.9, 403 trades per stock.</p>
-    <h4>Stocks</h4><p>${esc(STK.stocks.join(", "))}</p></div>
+    <h4>How it enters</h4><p>${esc(c.how_it_enters || STK.how_it_enters)}</p>
+    <h4>How it exits</h4><p>${esc(c.how_it_exits || STK.how_it_exits)}</p>
+    <h4>Backtest (2016-11 to 2026-10, $1,000 risk per trade)</h4><p>${esc(c.backtest)}.${c.kind === "box" ? ` Both box copies together: +$5.07M, drawdown $130k,
+      net / drawdown 38.9, 403 trades per stock.` : ""}</p>
+    <h4>Stocks</h4><p>${esc((c.stock_list || STK.stocks).join(", "))}</p></div>
     <div class="d-foot"><button class="btn" data-close>Close</button></div>`, true);
 }
 
@@ -182,21 +184,21 @@ function renderStocks() {
   $("#s-copies").innerHTML = s.copies.map(c => {
     const st = stkStatus(c);
     return `<span class="pill ${st.tone}" title="${esc(c.summary)}"><span class="pdot"></span><span class="ptxt">${esc(c.name)}: ${esc(st.text)} · ${usd(c.capital_usd)} per trade</span></span>`;
-  }).join(" ") + (on ? "" : ` <span class="muted">Both copies are off - switch them on on the <a href="/">Strategies</a> page.</span>`);
+  }).join(" ") + (on ? "" : ` <span class="muted">All stock strategies are off - switch them on on the <a href="/">Strategies</a> page.</span>`);
   $("#s-trades").innerHTML = pos.length ? `<div class="cards">${pos.map(stkCard).join("")}</div>` :
     `<div class="empty"><div class="e-title">No open stock trades</div>${on ? "The strategy is watching the stocks; trades appear here the moment they open." : "Switch on a copy on the Strategies page."}</div>`;
   $$("[data-stk-close]").forEach(b => b.addEventListener("click", () => stkClose(b.dataset.stkClose, b.dataset.name)));
   const w = s.watch || [];
   $("#s-watch").innerHTML = w.length ? `<div class="table-wrap"><table><thead><tr><th>Stock</th><th>Copy</th><th>Last candle</th><th class="r">Close</th>
       <th class="r">Buys above</th><th class="r">Sells below</th><th>Why no trade</th></tr></thead><tbody>
-      ${w.map(r => `<tr><td><b>${esc(r.stock)}</b></td><td>${r.copy === "box10" ? "10m" : "15m"}</td><td>${esc(r.at || "—")}</td>
+      ${w.map(r => `<tr><td><b>${esc(r.stock)}</b></td><td>${esc(stkLabel(r.copy))}</td><td>${esc(r.at || "—")}</td>
         <td class="r">${fmt(r.close)}</td><td class="r">${fmt(r.long_above)}</td><td class="r">${fmt(r.short_below)}</td><td>${esc(r.state || "")}</td></tr>`).join("")}
       </tbody></table></div>` : `<div class="empty">${on ? "Loading market data…" : "Nothing is being watched."}</div>`;
   const rows = stkHist.rows;
   $("#s-history").innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Opened</th><th>Closed</th><th>Stock</th><th>Copy</th>
       <th>Side</th><th class="r">Shares</th><th class="r">Entry</th><th class="r">Exit</th><th>How it ended</th><th class="r">Profit / loss</th></tr></thead><tbody>
       ${rows.map(r => `<tr><td>${esc(r.opened ? new Date(r.opened).toLocaleString() : "—")}</td><td>${esc(new Date(r.closed).toLocaleString())}</td>
-        <td><b>${esc(r.stock)}</b>${r.practice ? ' <span class="tag exp">practice</span>' : ""}</td><td>${r.copy === "box10" ? "10m" : "15m"}</td>
+        <td><b>${esc(r.stock)}</b>${r.practice ? ' <span class="tag exp">practice</span>' : ""}</td><td>${esc(stkLabel(r.copy))}</td>
         <td><span class="side ${String(r.side).toLowerCase()}" style="margin:0">${esc(String(r.side).toUpperCase())}</span></td>
         <td class="r">${r.shares}</td><td class="r">${fmt(r.entry)}</td><td class="r">${fmt(r.exit)}</td><td class="result">${esc(r.exits)}</td>
         <td class="r ${tone(r.pnl)}"><b>${money(r.pnl)}</b></td></tr>`).join("")}</tbody></table></div>`
@@ -242,7 +244,7 @@ function initStocks() {
   });
   $("#s-panic").addEventListener("click", async () => {
     const ok = await confirmDialog({ title: "Close every stock trade?", ok: "Close all stock trades", danger: true,
-      text: "Both stock copies are switched off and <b>every stock position Pattern Desk opened</b> is closed at market. Shares you bought yourself are not touched." });
+      text: "All stock strategies are switched off and <b>every stock position Pattern Desk opened</b> is closed at market. Shares you bought yourself are not touched." });
     if (!ok) return;
     try { await api("/api/stocks/close-all", { method: "POST" }); toast("Stock copies off. Closing orders sent."); stkPoll(); }
     catch (e) { toast(e.message, true); }

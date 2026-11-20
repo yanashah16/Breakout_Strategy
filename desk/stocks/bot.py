@@ -1,5 +1,6 @@
 """
-StockBot: one stock in one copy (e.g. NVDA in the 10m copy). Runs the rules (core.StockBoxCore) and keeps the
+StockBot: one stock in one copy (e.g. NVDA in the 10m copy). Runs the rules (core.StockBoxCore for the box copies,
+flag_core.StockFlagCore for the pole & flag copy - same feed / target interface) and keeps the
 broker position of ITS OWN fills equal to the rules' target, with the hub's orders.
 
 Orders follow the Deployment model: one order at a time for the difference between the target and what this bot
@@ -19,6 +20,7 @@ import pandas as pd
 
 from desk.settings import STATE
 from desk.stocks import core as C
+from desk.stocks import flag_core as F
 from desk.stocks.copies import COPIES
 from desk.stocks.feed import NY, bucket, is_last_minute, ny
 from desk.store import append_jsonl, read_json, write_json
@@ -28,6 +30,15 @@ DIR = STATE / "stocks"
 JOURNAL = DIR / "journal.jsonl"
 _POLL_SECS = 2.0
 _RETRY_SECS = 20.0
+
+
+def _num(v):
+    """nan -> None (the page's JSON cannot carry nan)."""
+    return None if isinstance(v, float) and math.isnan(v) else v
+
+
+def _clean(d: dict) -> dict:
+    return {k: _num(v) for k, v in (d or {}).items()}
 
 
 def now_iso() -> str:
@@ -44,7 +55,13 @@ class StockBot:
         params = dict(cp["params"], capital_usd=capital_usd)
         if risk_usd is not None:
             params["risk_trade_usd"] = float(risk_usd)
-        self.core = C.StockBoxCore(C.Params(params))
+        self.kind = cp.get("kind", "box")
+        if self.kind == "flag":
+            self.core = F.StockFlagCore(F.Params(params))
+            self.reasons = F.REASON
+        else:
+            self.core = C.StockBoxCore(C.Params(params))
+            self.reasons = C.REASON
         self.tf = self.core.p.tf
         self.hub, self.settings, self.room = hub, settings, room
         self.path = DIR / f"{self.id}.json"
@@ -195,7 +212,8 @@ class StockBot:
 
     def on_price(self, px: Optional[float], now_ny: dt.datetime):
         self.px = px
-        if px is None or self.core.pos.side == 0 or not self.ready:
+        armed = bool(getattr(self.core, "pend", None))        # flag: a stop entry is waiting for this candle
+        if px is None or (self.core.pos.side == 0 and not armed) or not self.ready:
             self._prev_px = px
             return
         minute = now_ny.replace(second=0, microsecond=0)
@@ -216,18 +234,19 @@ class StockBot:
                     self.core.restore(None)
                     continue
                 ps = self.core.pos
+                setup = "Flag" if self.kind == "flag" else "Breakout"
                 self.meta = {"side": e.side, "rule_entry": e.px, "opened": now_iso(), "fills": [], "exits": [],
-                             "setup": "Breakout", "boost": ps.boost}
-                log.info(f"[{self.id}] BREAKOUT {'LONG' if e.side > 0 else 'SHORT'} {e.qty} @ {e.px:.2f} | stop "
+                             "setup": setup, "boost": ps.boost}
+                log.info(f"[{self.id}] {setup.upper()} {'LONG' if e.side > 0 else 'SHORT'} {e.qty} @ {e.px:.2f} | stop "
                          f"{ps.stop:.2f} TP1 {ps.tps[0]:.2f} | 1R {ps.unit:.2f} legs {ps.legs}" + (f" | {ps.boost}" if ps.boost else ""))
             elif e.kind == "flip":
                 self.meta.setdefault("exits", []).append({"reason": e.reason, "level": e.px, "time": now_iso(),
                                                           "qty": e.qty - self.core.pos.open_qty()})
                 self.meta["flip_to"] = {"side": e.side, "rule_entry": e.px, "time": now_iso()}
-                log.info(f"[{self.id}] REVERSE -> {'LONG' if e.side > 0 else 'SHORT'} @ {e.px:.2f} ({C.REASON.get(e.reason, e.reason)})")
+                log.info(f"[{self.id}] REVERSE -> {'LONG' if e.side > 0 else 'SHORT'} @ {e.px:.2f} ({self.reasons.get(e.reason, e.reason)})")
             else:
                 self.meta.setdefault("exits", []).append({"reason": e.reason, "level": e.px, "time": now_iso(), "qty": e.qty})
-                log.info(f"[{self.id}] EXIT {e.qty} @ {e.px:.2f} ({C.REASON.get(e.reason, e.reason)})"
+                log.info(f"[{self.id}] EXIT {e.qty} @ {e.px:.2f} ({self.reasons.get(e.reason, e.reason)})"
                          + (" [restart catch-up]" if catch_up else ""))
         self.save()
 
@@ -361,7 +380,7 @@ class StockBot:
         avg_out = sum(f["qty"] * f["price"] for f in outs) / q_out if q_out else avg_in
         side = int(m.get("side") or 0)
         pnl = side * (avg_out - avg_in) * q_out
-        reasons = [C.REASON.get(x["reason"], x["reason"]) for x in m.get("exits") or []]
+        reasons = [self.reasons.get(x["reason"], x["reason"]) for x in m.get("exits") or []]
         row = {"copy": self.copy, "strategy": COPIES[self.copy]["name"], "stock": self.sym, "side": "Long" if side > 0 else "Short",
                "setup": m.get("setup", "Breakout"), "opened": m.get("opened"), "closed": now_iso(), "shares": q_in,
                "entry": round(avg_in, 4), "exit": round(avg_out, 4), "pnl": round(pnl, 2),
@@ -399,7 +418,9 @@ class StockBot:
         if d and ps.stage == 0 and ps.be_on:
             stage = "stop locked above the entry (break-even +0.1 R)"
         nxt = ""
-        if d:
+        if self.kind == "flag":
+            stage, nxt = self.core.story()
+        elif d:
             t1, t3, trail, _ = p.exits(d)
             if ps.stage == 0:
                 nxt = (f"Target 1 at {ps.tps[0]:.2f} closes {ps.legs[0]} shares; stop {ps.stop:.2f} closes all"
@@ -411,9 +432,10 @@ class StockBot:
         return {"id": self.id, "copy": self.copy, "strategy": COPIES[self.copy]["name"], "stock": self.sym,
                 "side": "Long" if d > 0 else "Short" if d < 0 else "", "held": self.held, "legs": list(ps.legs),
                 "rule_entry": ps.entry if d else None, "fill": avg, "stop": ps.stop if d else None,
-                "tp1": ps.tps[0] if d else None, "tp3": ps.tps[1] if d else None, "r_size": ps.unit if d else None,
+                "tp1": ps.tps[0] if d else None, "tp3": _num(ps.tps[1]) if d else None, "r_size": ps.unit if d else None,
                 "price": self.px, "upnl": upnl, "r_now": (d * (self.px - ps.entry) / ps.unit) if d and self.px and ps.unit else None,
-                "stage": stage, "next": nxt, "setup": "Reverse" if ps.is_rev else ("Breakout" if d else ""),
+                "stage": stage, "next": nxt,
+                "setup": "Reverse" if ps.is_rev else (("Flag" if self.kind == "flag" else "Breakout") if d else ""),
                 "opened": self.meta.get("opened"), "boost": ps.boost, "working": bool(self.order),
-                "attention": self.attention, "error": self.error, "last": self.core.last,
+                "attention": self.attention, "error": self.error, "last": _clean(self.core.last),
                 "notional": abs(self.held) * (self.px or 0)}
