@@ -1,0 +1,67 @@
+# Nasdaq Flat Zone 3m  -  from nq_wae_backtest/flatzone/flatzone_NQ_3m_hi.yaml (backtest: research/flatzone_backtest.py)
+# Research notes:
+# Flat Zone Breakout - NQ 3 min, MORE than 1000 trades (legs). Optimised 2026-11-22 (random + evolutionary + hill-climb search, ~27k combos for this timeframe, 1 tick slip).
+#   1 tick: net $1,270k, max DD $50k, net/DD 25.52, 1145 trades (2290 legs), PF 1.87.
+#   0 slip net/DD 27.14 | 2 ticks 22.85 | 2016-22 net/DD 14.5, 2023-26 15.8 | neighbours median 19.5
+#   Run:  python flatzone/flatzone_backtest.py flatzone/flatzone_NQ_3m_hi.yaml
+id: nq-flatzone-3m
+name: Nasdaq Flat Zone 3m
+family: Nasdaq 100
+signal: NQ
+markets:
+- MNQ
+- NQ
+pattern: Flat zone breakout
+summary: Breakout of a tight sideways zone on 3-minute candles, long only.
+how_it_enters: 'Finds a flat zone: 10+ candles (3-minute) whose closes stay within 3.5 ATR and drift at most 70 % of the zone
+  height. A candle closing 100 % of the height beyond the zone (by close) enters at that close, long only. Only if the candle''s
+  volume is >= 1.0 x the same time of day''s average (10 days). Only when ADX(14) >= 15. No entries 22:00-02:00 New York.
+  Volume >= 4.0 x average: x2 quantity.'
+how_it_exits: Stop at the other side of the zone. Target contracts take profit 4.0 ATR from the breakout close. Runner contracts
+  trail 5.0 ATR behind the best price. At 2.5 ATR profit every stop locks entry + 0.5 ATR. If the first stop is hit within
+  5 candles it reverses once (same size, same stop distance). Closed after 5 days.
+experimental: false
+default_qty:
+- 1
+- 2
+engine: flatzone
+source: nq_wae_backtest/flatzone/flatzone_NQ_3m_hi.yaml
+data: {}
+logic:
+  timeframe: 3
+  min_bars: 10
+  max_bars: 30
+  box_src: close
+  atr_len: 20
+  max_h_atr: 3.5
+  max_slope: 70
+  break_mode: close
+  break_pct: 100
+  direction: Long only
+  skip_hours: 22:00-02:00
+  rev_bars: 5
+  vol_ref: tod
+  vol_days: 10
+  vol_min: 1.0
+  vol_boost: 4.0
+  vol_mult: 2
+  qty_step: null
+  qty_tiers: 2000:4, 4000:3, 6000:2, 8000:1
+  t_atr_len: 7
+  rev_vol_min: null
+  rev_vol_max: null
+  adx_len: 14
+  adx_min: 15
+  risk_usd: null
+  qty_t1: 1
+  t1_atr: 4.0
+  qty_t2: 2
+  trail_atr: 5.0
+  t2_atr: null
+  max_hold_days: 5
+  trail_act: 0.0
+  sl_mode: box
+  sl_atr: 2.0
+  be_after_t1: false
+  be_atr: 2.5
+  be_lock: 0.5

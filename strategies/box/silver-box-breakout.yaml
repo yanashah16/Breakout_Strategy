@@ -1,0 +1,93 @@
+# Silver Box Breakout  -  from nq_wae_backtest/box2/versions/box_SI.yaml (backtest: research/box2_backtest.py)
+# Research notes:
+# BEST box SI, BOTH directions, 2016-10 -> 2026-10, 0 tick: full-period ndd 17.82, entries 1452, net $5,898,790 (0 tick)
+# run from box2:  python box/box_backtest.py versions/box_SI.yaml
+id: silver-box-breakout
+name: Silver Box Breakout
+family: Silver
+signal: SI
+markets:
+- SIL
+- SI
+pattern: Box breakout, 3 targets
+summary: Breakout of a sideways box on 5-minute candles, 3 legs, long and short.
+how_it_enters: 'Box = the last 50 candles (5-minute, wicks), at most 20 x ATR(150) tall. A fresh close 1.5 ATR beyond the
+  box enters at that close (both). Entry-condition score: at least 2 of 9 conditions (day_used_min, vwap_min, ema50_slope_min,
+  adx_min, body_max, range_max, box_min, iv_min, ema50_dist_min). Score >= 6: x2 size. No entries 11:30-13:30 New York.'
+how_it_exits: 'Stop 100 % of the box height. Leg 1 takes profit at 3 R, then the stop goes to the entry. Leg 2 at 3.5 R. Runner
+  trails (gives back 30 % of the best profit), final target 5 R. Original stop hit within 10 candles: reverses once. Closed
+  after 24 market hours.'
+experimental: false
+default_qty:
+- 2
+- 3
+- 1
+engine: box
+source: nq_wae_backtest/box2/versions/box_SI.yaml
+data: {}
+logic:
+  timeframe: 5
+  box_bars: 50
+  box_edges: wick
+  max_box_atr: 20
+  box_atr_len: 150
+  break_buffer: 1.5
+  ema_len: null
+  direction: Both
+  reverse: true
+  reverse_bars: 10
+  atr_len: 14
+  sl_box_pct: 100
+  tp1_mult: 3
+  leg2_ema_len: 5
+  tp3_mult: 5
+  trail_pct: 30
+  qty1: 2
+  qty2: 3
+  qty3: 1
+  flat_time: null
+  vol_fast: 5
+  vol_slow: 30
+  vol_pct: null
+  vol_avg: sma
+  skip_hours: 11:30-13:30
+  min_box_atr: null
+  min_squeeze: 0.85
+  max_trend_er: null
+  er_days: 20
+  be_mult: null
+  risk_usd: null
+  max_mult: 3
+  iv_min: null
+  iv_max: null
+  ivr_min: null
+  ivr_max: null
+  ivr_days: 252
+  short_tp1_mult: null
+  short_tp2_mult: null
+  short_tp3_mult: null
+  short_trail_pct: null
+  short_leg2_ema_len: null
+  leg3_guard_r: null
+  leg3_guard_sl_r: 1
+  risk_trade_usd: null
+  risk_pct: null
+  start_capital: 100000
+  size_step: 1.0
+  size_atr_floor: 1
+  short_sl_box_pct: null
+  max_hold_hours: 24
+  tp2_mult: 3.5
+  f_day_used_min: 0.8
+  f_vwap_min: 4.5
+  f_ema50_slope_min: 0.9
+  f_adx_min: 32
+  f_body_max: 1.8
+  f_range_max: 2.9
+  f_box_min: 6
+  f_min_score: 2
+  size_up_score: 6
+  size_up_mult: 2
+  f_iv_min: 12
+  f_ema50_dist_min: 6
+  f_squeeze_max: null

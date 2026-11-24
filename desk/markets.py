@@ -82,8 +82,15 @@ def third_friday(year: int, month: int) -> dt.date:
     return d + dt.timedelta(days=(4 - d.weekday()) % 7)
 
 
+def second_friday(year: int, month: int) -> dt.date:
+    d = dt.date(year, month, 8)
+    return d + dt.timedelta(days=(4 - d.weekday()) % 7)
+
+
 def roll_date(m: Market, year: int, month: int) -> dt.date:
     """First day the NEXT contract is traded instead of (year, month)."""
+    if m.roll == "second_friday":       # NKD: last trade the business day before the 2nd Friday
+        return second_friday(year, month) - dt.timedelta(days=8)
     if m.roll == "equity_index":
         return third_friday(year, month) - dt.timedelta(days=8)
     if m.roll == "month_before":
@@ -108,6 +115,8 @@ def last_hold_day(m: Market, year: int, month: int) -> dt.date:
     (they trade until the 3rd Friday), the day before first notice for metals / grains, the 3rd business
     day before the 25th of the prior month (last trade, approximately) for energy. After this day the
     month is not offered any more and an explicit choice of it falls back to the front month."""
+    if m.roll == "second_friday":
+        return second_friday(year, month) - dt.timedelta(days=2)      # expiry is the Thursday before
     if m.roll == "equity_index":
         return third_friday(year, month) - dt.timedelta(days=1)       # expiry morning is not tradable all day
     if m.roll == "month_before":

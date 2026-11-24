@@ -232,7 +232,7 @@ def main():
     ap.add_argument("--window", type=int, default=0)
     a = ap.parse_args()
     cards, _ = catalog.load()
-    ids = sorted(cards) if a.card == "all" else [a.card]
+    ids = sorted(k for k, c in cards.items() if c.get("engine", "patterns") in ("patterns", "lines")) if a.card == "all" else [a.card]
     start = pd.Timestamp(a.start, tz="America/New_York").tz_convert("UTC")
     end = pd.Timestamp(a.end, tz="America/New_York").tz_convert("UTC")
     out = [run(cards[i], start, end, a.window) for i in ids]

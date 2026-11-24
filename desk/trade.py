@@ -23,7 +23,9 @@ from desk.logic.base import ExitRules
 NAN = float("nan")
 REASON = {"stop": "Stop loss", "be": "Break-even stop", "trail": "Trailing stop", "tp1": "Profit target",
           "tp2": "Final target", "time": "Time limit", "flat": "End-of-day close", "manual": "Closed by you",
-          "past_stop": "Entry filled past the stop", "shutdown": "Strategy stopped"}
+          "past_stop": "Entry filled past the stop",
+          "lock": "Profit-lock stop", "tp3": "Final target", "ema": "Trend turned (EMA close)",
+          "hold": "Max hold time", "shutdown": "Strategy stopped"}
 STOP_REASON = {0: "stop", 1: "be", 2: "trail"}
 
 

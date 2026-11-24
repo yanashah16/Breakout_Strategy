@@ -201,12 +201,13 @@ function monthOptions(months, current) {
 const FAMILY_ORDER = ["S&P 500", "Nasdaq 100", "Gold", "Crude Oil"];
 const strat = { filter: "All", onlyOn: false, q: "", keys: "", catalog: null };
 
-function qtyLabels(legs) {
+function qtyLabels(legs, n) {
+  if (n === 3) return legs.map(l => ["Target 1", "Leg 2", "Runner"][l]);   // box cards: 3 legs
   return legs.length > 1 ? ["Target", "Runner"] : ["Contracts"];
 }
 
 function rowHtml(r) {
-  const labels = qtyLabels(r.legs);
+  const labels = qtyLabels(r.legs, r.qty.length);
   const q = r.legs.map((leg, i) => `<label title="${leg === 0 ? "Contracts closed at the profit target" : (r.legs.length > 1 ? "Contracts that stay in to ride the trend" : "Contracts traded")}">
       ${labels[i]} <input type="number" min="0" max="100" step="1" inputmode="numeric" data-leg="${leg}" value="${r.qty[leg]}" aria-label="${labels[i]} quantity"></label>`).join("");
   return `<div class="row ${r.enabled ? "" : "off"}" data-id="${esc(r.id)}">
@@ -449,7 +450,7 @@ async function addDialog(preselect) {
     $("#a-sum", d).textContent = sel.summary;
     $("#a-m", d).innerHTML = sel.markets.map(m => `<button type="button" data-m="${m}" class="${m === market ? "on" : ""}">${m}<small>${["MES", "MNQ", "MGC", "MCL"].includes(m) ? "micro" : "full-size"}</small></button>`).join("");
     $$("#a-m button", d).forEach(b => b.addEventListener("click", () => { market = b.dataset.m; draw(); }));
-    const labels = qtyLabels(sel.legs);
+    const labels = qtyLabels(sel.legs, sel.default_qty.length);
     $("#a-q", d).innerHTML = sel.legs.map((leg, i) => `<label>${labels[i]} <input type="number" min="0" max="100" data-leg="${leg}" value="${sel.default_qty[leg]}"></label>`).join("");
     loadMonths(market).then(ms => { $("#a-mon", d).innerHTML = monthOptions(ms, "auto"); });
   }

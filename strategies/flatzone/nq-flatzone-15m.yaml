@@ -1,0 +1,67 @@
+# Nasdaq Flat Zone 15m  -  from nq_wae_backtest/flatzone/flatzone_NQ_15m_hi.yaml (backtest: research/flatzone_backtest.py)
+# Research notes:
+# Flat Zone Breakout - NQ 15 min, MORE than 1000 trades (legs). Optimised 2026-11-22 (random + evolutionary + hill-climb search, ~27k combos for this timeframe, 1 tick slip).
+#   1 tick: net $1,727k, max DD $61k, net/DD 28.50, 2177 trades (4354 legs), PF 1.66.
+#   0 slip net/DD 30.50 | 2 ticks 26.56 | 2016-22 net/DD 20.6, 2023-26 19.1 | neighbours median 21.4
+#   Run:  python flatzone/flatzone_backtest.py flatzone/flatzone_NQ_15m_hi.yaml
+id: nq-flatzone-15m
+name: Nasdaq Flat Zone 15m
+family: Nasdaq 100
+signal: NQ
+markets:
+- MNQ
+- NQ
+pattern: Flat zone breakout
+summary: Breakout of a tight sideways zone on 15-minute candles, long and short.
+how_it_enters: 'Finds a flat zone: 9+ candles (15-minute) whose candle bodies stay within 1.9 ATR and drift at most 70 % of
+  the zone height. A candle closing 100 % of the height beyond the zone (with a body that size) enters at that close, long
+  or short. Only if the candle''s volume is >= 0.8 x the same time of day''s average (20 days). No entries 14:00-16:00 New
+  York. Volume >= 4.0 x average: x2 quantity.'
+how_it_exits: Stop at 1.0 ATR from the breakout close. Target contracts take profit 3.0 ATR from the breakout close. Runner
+  contracts trail 8.0 ATR behind the best price. Runner cap 20 ATR. At 4.0 ATR profit every stop locks entry + 1.0 ATR. If
+  the first stop is hit within 3 candles it reverses once (same size, same stop distance). Closed after 5 days.
+experimental: false
+default_qty:
+- 1
+- 2
+engine: flatzone
+source: nq_wae_backtest/flatzone/flatzone_NQ_15m_hi.yaml
+data: {}
+logic:
+  timeframe: 15
+  min_bars: 9
+  max_bars: 30
+  box_src: body
+  atr_len: 50
+  max_h_atr: 1.9
+  max_slope: 70
+  break_mode: body
+  break_pct: 100
+  direction: Both
+  skip_hours: 14:00-16:00
+  rev_bars: 3
+  vol_ref: tod
+  vol_days: 20
+  vol_min: 0.8
+  vol_boost: 4.0
+  vol_mult: 2
+  qty_step: null
+  qty_tiers: 2000:4, 4000:3, 6000:2, 8000:1
+  t_atr_len: 10
+  rev_vol_min: null
+  rev_vol_max: null
+  adx_len: 14
+  adx_min: null
+  risk_usd: null
+  qty_t1: 1
+  t1_atr: 3.0
+  qty_t2: 2
+  trail_atr: 8.0
+  t2_atr: 20
+  max_hold_days: 5
+  trail_act: 0.0
+  sl_mode: atr
+  sl_atr: 1.0
+  be_after_t1: false
+  be_atr: 4.0
+  be_lock: 1.0

@@ -106,7 +106,9 @@ class Deployment:
     @property
     def qty(self) -> List[int]:
         q = self.cfg.get("qty") or self.card.get("default_qty") or [0, 1]
-        return [max(0, int(q[0] or 0)), max(0, int(q[1] or 0))]
+        n = max(2, len(self.card.get("default_qty") or [0, 1]))        # 3 for the box cards (3 legs)
+        q = list(q) + [0] * (n - len(q))
+        return [max(0, int(x or 0)) for x in q[:n]]
 
     def leg_qty(self, boost: bool) -> List[int]:
         """Operator quantities; on a volume-boost signal scaled like the research boost (double = x2)."""
@@ -177,7 +179,7 @@ class Deployment:
         if not d:
             return
         self.plans = [Plan.from_dict(p) for p in d.get("plans") or []]
-        self.trade = Trade.from_dict(d["trade"]) if d.get("trade") else None
+        self.trade = self._trade_cls().from_dict(d["trade"]) if d.get("trade") else None
         self.meta = d.get("meta") or {}
         self.last_anchor = d.get("last_anchor") or self.last_anchor
         self.day = d.get("day") or self.day
@@ -194,11 +196,29 @@ class Deployment:
         if self.held or self.trade:
             log.info(f"[{self.id}] restored: holding {self.held:+d}, trade {'open' if self.trade else 'none'}")
 
+    def _closing_wait(self, p: Plan, now: pd.Timestamp) -> bool:
+        """An "after the close" entry waits (at most entry_wait_seconds) while the closed trade's order fills."""
+        if "after the close" not in (p.note or "") or not (self.trade and not self.trade.is_open):
+            return False
+        return (now - pd.Timestamp(p.after)).total_seconds() < float(self.settings.entry_wait_seconds or 60)
+
+    def _trade_cls(self):
+        """The logic's own trade class (flatzone: FlatTrade), else the 2-leg Trade."""
+        return getattr(self.logic, "trade_cls", None) or Trade
+
     # ================================================================== events from the engine
     def on_minute(self, row, contract: tuple):
         """A completed 1-minute candle of the signal market (row.t = open, UTC)."""
         t = row.t
         when = t.isoformat()
+        for p in list(self.plans):                       # "open": enter at the first minute that trades after the bar
+            if p.kind == "open" and t >= pd.Timestamp(p.after):
+                if self._closing_wait(p, t):
+                    continue
+                self._drop(p)                            # one chance: the entry bar's first minute (backtest)
+                if self._flat_for_entry():
+                    self._enter(p, float(row.open), when, contract)
+                    self.sync()
         if self.trade and self.trade.is_open:
             ex = self.trade.on_minute(row.open, row.high, row.low, row.close, when, self.rules)
             self._exits(ex)
@@ -229,6 +249,13 @@ class Deployment:
         if px is None:
             return
         when = now.isoformat()
+        for p in list(self.plans):                       # "open": the first live price after the signal bar
+            if p.kind == "open" and now >= pd.Timestamp(p.after):
+                if self._closing_wait(p, now):
+                    continue
+                self._drop(p)
+                if self._flat_for_entry():
+                    self._enter(p, px, when, contract)
         if self.trade and self.trade.is_open:
             self._exits(self.trade.on_price(px, when))
         for p in list(self.plans):
@@ -253,7 +280,16 @@ class Deployment:
         when = (bar_open + pd.Timedelta(minutes=self.logic.timeframe)).isoformat()
         if self.trade and self.trade.is_open:
             flat = self._bar_flat(bar_open)
-            self._exits(self.trade.on_bar_close(close, flat, self.rules, when))
+            kw = {}
+            if hasattr(self.logic, "trade_bar_args"):          # box: the leg 2 EMA at this bar close
+                try:
+                    kw = self.logic.trade_bar_args(self.trade, self.logic.bar_values(ctx))
+                except Exception as exc:
+                    self.error = f"signal error: {type(exc).__name__}: {exc}"
+                    log.exception(f"[{self.id}] bar values failed")
+            self._exits(self.trade.on_bar_close(close, flat, self.rules, when, **kw))
+            if not self.trade.is_open and getattr(self.logic, "reenter_same_bar", False):
+                self.sync()                                # close now: this bar's close may open the next trade
         if not self.enabled:
             self.plans = []
             self.sync()
@@ -265,11 +301,17 @@ class Deployment:
             self.error = f"signal error: {type(exc).__name__}: {exc}"
             log.exception(f"[{self.id}] on_bar_close failed")
             plans = []
-        self.plans = [p for p in plans if p.kind == "stop"]   # a new bar replaces the armed entries
+        self.plans = [p for p in plans if p.kind == "stop" or (p.kind == "open" and self._flat_for_entry())]
         for p in plans:
             self.last_signal = p.signal_time
             if p.kind == "market" and self._flat_for_entry(bar=bar_open.isoformat()):
                 self._enter(p, p.level, when, contract)
+            elif (p.kind == "market" and getattr(self.logic, "reenter_same_bar", False) and self.trade
+                  and not self.trade.is_open and not self.roll):
+                # the rules closed the trade at this bar's close and opened a new one (the backtest does both):
+                # enter at the first price once the closing order has filled
+                p.kind, p.after, p.note = "open", when, (p.note + " | after the close").strip(" |")
+                self.plans.append(p)
         if plans:
             log.info(f"[{self.id}] signal: " + "; ".join(
                 f"{'BUY' if p.side > 0 else 'SELL'} {'stop ' if p.kind == 'stop' else ''}{p.level:g}" for p in plans))
@@ -287,7 +329,8 @@ class Deployment:
         """The backtest enters only when flat at the start of the bar, never in a bar that closed a trade."""
         if self.trade is not None or self.held != 0 or self.order or self.roll:
             return False
-        if bar and self.closed_bar and pd.Timestamp(self.closed_bar) == pd.Timestamp(bar):
+        if (bar and self.closed_bar and pd.Timestamp(self.closed_bar) == pd.Timestamp(bar)
+                and not getattr(self.logic, "reenter_same_bar", False)):
             return False
         return True
 
@@ -366,13 +409,16 @@ class Deployment:
             q = self.risk_qty(q, abs(float(px) - float(p.stop)))
             if sum(q) <= 0:
                 return
-        tr = Trade(side=p.side, entry=float(px), stop0=float(p.stop), q=q, tp_mode=p.tp_mode, tp_r=p.tp_r,
-                   tp_dist=p.tp_dist, tp_price=p.tp_price, tp2_r=p.tp2_r, trail_r=p.trail_r,
-                   entry_minute=bucket(pd.Timestamp(when), 1).isoformat(), lock_px=float(p.lock_px or 0.0))
+        if hasattr(self.logic, "make_trade"):
+            tr = self.logic.make_trade(p, float(px), q, when)
+        else:
+            tr = Trade(side=p.side, entry=float(px), stop0=float(p.stop), q=q, tp_mode=p.tp_mode, tp_r=p.tp_r,
+                       tp_dist=p.tp_dist, tp_price=p.tp_price, tp2_r=p.tp2_r, trail_r=p.trail_r,
+                       entry_minute=bucket(pd.Timestamp(when), 1).isoformat(), lock_px=float(p.lock_px or 0.0))
         if tr.risk <= 0:
             log.info(f"[{self.id}] entry at {px:g} would be past the stop {p.stop:g} - skipped")
             return
-        if p.kind == "market":
+        if p.kind == "market" and not hasattr(self.logic, "make_trade"):
             tr.bars_closed = 1                # entered AT the signal bar's close: that bar is the entry bar
         self.trade = tr
         self.plans = []
@@ -425,7 +471,10 @@ class Deployment:
             return
         if self.order:
             self._poll()
-            return
+            # a stop-and-reverse: the close just filled - send the reverse entry now, not on the next tick
+            if self.order or not (self.trade and self.meta.get("reverse") and self.meta.get("entry_fill") is None
+                                  and self.held == 0):
+                return
         if self.attention:
             return                                       # needs a human: no orders at all
         if time.monotonic() < self._retry_at:
@@ -481,6 +530,8 @@ class Deployment:
         self.save()
         if self.order["dry"]:
             self._poll()
+            if not self.order and self.trade and self.meta.get("reverse") and self.meta.get("entry_fill") is None:
+                self.sync()                                # practice mode: the reverse entry right after its close
 
     def _poll(self):
         o = self.order
@@ -538,9 +589,15 @@ class Deployment:
             if filled < abs(o["qty"]) and self.trade:
                 # entry not (fully) filled: keep what filled, leg 1 first
                 f = abs(self.held)
-                q1 = min(self.trade.q[0], f)
-                self.trade.q = [q1, f - q1]
-                self.trade.open = [self.trade.open[0] and q1 > 0, self.trade.open[1] and f - q1 > 0]
+                left, nq = f, []
+                for qk in self.trade.q:                          # keep what filled, leg 1 first
+                    take = min(qk, left)
+                    nq.append(take)
+                    left -= take
+                if left > 0:
+                    nq[-1] += left
+                self.trade.q = nq
+                self.trade.open = [o and qk > 0 for o, qk in zip(self.trade.open, nq)]
                 self.meta["qty"] = list(self.trade.q)
                 log.warning(f"[{self.id}] entry {status}: {filled}/{abs(o['qty'])} filled - trading {f}")
                 if f == 0:
@@ -749,15 +806,47 @@ class Deployment:
                 # that just closed, so the next bar may enter again (backtest: no entry only in the exit's bar)
                 t_exit -= pd.Timedelta(minutes=1)
             self.closed_bar = bucket(t_exit, self.logic.timeframe).isoformat()
+            old, pos = self.trade, (self.pos_con_id, self.pos_expiry)
             self.trade = None
             self.meta = {}
             self.pending_exits = []
             self.pos_con_id = self.pos_expiry = self.pos_account = None
+            if getattr(old, "reverse_ready", None) and hasattr(self.logic, "make_reverse"):
+                self._reverse(old, pos)
             if self.cfg.get("stop_after_trade"):
                 self.cfg["enabled"] = False
                 self.cfg["stop_after_trade"] = False
                 self.cfg["_changed"] = True
             self.save()
+
+    def _reverse(self, old, pos: tuple):
+        """Stop-and-reverse (flatzone rev_bars): the initial stop was hit early - the same size the other way at
+        once. Not when the strategy is off / stopping after this trade, or the price already ran away."""
+        rv = old.reverse_ready
+        if not self.can_open or not pos[0]:
+            log.info(f"[{self.id}] reverse not taken (strategy off or no contract)")
+            return
+        tr = self.logic.make_reverse(old)
+        if tr is None:
+            return
+        max_chase = float(getattr(self.settings, "entry_max_chase_r", 0.5) or 0)
+        live, risk = self.signal_px, abs(tr.risk)
+        if max_chase > 0 and live is not None and not math.isnan(live) and risk > 0:
+            past = tr.side * (live - float(rv["px"]))
+            if past > max_chase * risk:
+                log.warning(f"[{self.id}] reverse SKIPPED: price {live:g} already {past / risk:.2f}R past the "
+                            f"reverse level {rv['px']:g}")
+                return
+        when = rv["minute"]
+        self.trade = tr
+        self.plans = []
+        self.pos_con_id, self.pos_expiry, self.pos_account = int(pos[0]), pos[1], self.account
+        self.meta = {"trade_id": uuid.uuid4().hex[:10], "opened": self.now().isoformat(), "signal_time": when,
+                     "trigger": float(rv["px"]), "boost": False, "eth": False, "basis": 0.0, "fills": [],
+                     "entry_fill": None, "contract": mkts.label(self.market.symbol, pos[1]), "reverse": True,
+                     "qty": list(tr.q), "exits": [], "account": self.account, "roll_adj": 0.0, "rolls": []}
+        log.info(f"[{self.id}] REVERSE {'LONG' if tr.side > 0 else 'SHORT'} {sum(tr.q)} {self.meta['contract']} "
+                 f"at {rv['px']:g} stop {tr.stop0:g} tp1 {tr.tp1:g}")
 
     def _journal_close(self):
         m, tr = self.meta, self.trade

@@ -1,0 +1,69 @@
+# Dow Flat Zone 15m Long  -  from nq_wae_backtest/flatzone/flatzone_YM_15m.yaml (backtest: research/flatzone_backtest.py)
+# Research notes:
+# Flat Zone Breakout - YM 15 min, optimised 2026-11-23 (random + evolutionary + hill-climb, 1 tick slip). Long only.
+#   1 tick: net $1,080k, max DD $64k, net/DD 16.86, 787 trades (1574 legs), PF 1.83.
+#   0 slip net/DD 17.46 | 2 ticks 16.18 | 2016-22 net/DD 15.4, 2023-26 4.8 | neighbours median 14.1
+#   NOTE: fewer than 1000 trades and Long only - to be replaced by a >= 1000-trade, both-direction version.
+#   Run:  python flatzone/flatzone_backtest.py flatzone/flatzone_YM_15m.yaml
+id: dow-flatzone-15m-long
+name: Dow Flat Zone 15m Long
+family: Dow
+signal: YM
+markets:
+- MYM
+- YM
+pattern: Flat zone breakout
+summary: Breakout of a tight sideways zone on 15-minute candles, long only.
+how_it_enters: 'Finds a flat zone: 6+ candles (15-minute) whose closes stay within 1.9 ATR and drift at most 40 % of the zone
+  height. A candle closing 50 % of the height beyond the zone (with a body that size) enters at that close, long only. Only
+  if the candle''s volume is >= 1.0 x the same time of day''s average (10 days). Only when ADX(14) >= 25. No entries 02:00-08:00
+  New York. Volume >= 1.8 x average: x2 quantity.'
+how_it_exits: Stop at 2.5 ATR from the breakout close. Target contracts take profit 1.0 ATR from the breakout close. Runner
+  contracts trail 10.0 ATR behind the best price, from 2.0 ATR in profit. Runner cap 20 ATR. At 4.0 ATR profit every stop
+  locks entry + 0.5 ATR. If the first stop is hit within 3 candles it reverses once (same size, same stop distance). Closed
+  after 14 days.
+experimental: false
+default_qty:
+- 1
+- 2
+engine: flatzone
+source: nq_wae_backtest/flatzone/flatzone_YM_15m.yaml
+data: {}
+logic:
+  timeframe: 15
+  min_bars: 6
+  max_bars: 12
+  box_src: close
+  atr_len: 20
+  max_h_atr: 1.9
+  max_slope: 40
+  break_mode: body
+  break_pct: 50
+  direction: Long only
+  skip_hours: 02:00-08:00
+  rev_bars: 3
+  vol_ref: tod
+  vol_days: 10
+  vol_min: 1.0
+  vol_boost: 1.8
+  vol_mult: 2
+  qty_step: null
+  qty_tiers: 5000:3, 22600:2, 30100:1
+  t_atr_len: 5
+  rev_vol_min: null
+  rev_vol_max: null
+  adx_len: 14
+  adx_min: 25
+  risk_usd: null
+  qty_t1: 1
+  t1_atr: 1.0
+  qty_t2: 2
+  trail_atr: 10.0
+  t2_atr: 20
+  max_hold_days: 14
+  trail_act: 2.0
+  sl_mode: atr
+  sl_atr: 2.5
+  be_after_t1: false
+  be_atr: 4.0
+  be_lock: 0.5

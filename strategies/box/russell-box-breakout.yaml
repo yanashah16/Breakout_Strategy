@@ -1,0 +1,94 @@
+# Russell Box Breakout  -  from nq_wae_backtest/box2/versions/box_RTY.yaml (backtest: research/box2_backtest.py)
+# Research notes:
+# BEST box RTY, BOTH directions, 2016-10 -> 2026-10, 0 tick: full-period ndd 15.33, entries 3913, net $735,219 (0 tick)
+# run from box2:  python box/box_backtest.py versions/box_RTY.yaml
+id: russell-box-breakout
+name: Russell Box Breakout
+family: Russell 2000
+signal: RTY
+markets:
+- M2K
+- RTY
+pattern: Box breakout, 3 targets
+summary: Breakout of a sideways box on 5-minute candles, 3 legs, long and short.
+how_it_enters: 'Box = the last 50 candles (5-minute, closes), at most 10 x ATR(200) tall. A fresh close 0.5 ATR beyond the
+  box enters at that close (both). Entry-condition score: at least 2 of 9 conditions (vwap_min, ema50_slope_min, adx_min,
+  body_max, range_max, box_min, iv_min, ema50_dist_min, ema200_slope_min). Score >= 8: x3 size. IV index between 12 and 30.
+  No entries 11:30-13:30 New York.'
+how_it_exits: 'Stop 75 % of the box height. Leg 1 takes profit at 1.25 R, then the stop goes to the entry. Leg 2 leaves on
+  a close beyond EMA(200). Runner trails (gives back 60 % of the best profit), final target 4 R. Original stop hit within
+  30 candles: reverses once. Closed after 72 market hours.'
+experimental: false
+default_qty:
+- 3
+- 0
+- 1
+engine: box
+source: nq_wae_backtest/box2/versions/box_RTY.yaml
+data: {}
+logic:
+  timeframe: 5
+  box_bars: 50
+  box_edges: close
+  max_box_atr: 10
+  box_atr_len: 200
+  break_buffer: 0.5
+  ema_len: null
+  direction: Both
+  reverse: true
+  reverse_bars: 30
+  atr_len: 14
+  sl_box_pct: 75
+  tp1_mult: 1.25
+  leg2_ema_len: 200
+  tp3_mult: 4
+  trail_pct: 60
+  qty1: 3
+  qty2: 0
+  qty3: 1
+  flat_time: null
+  vol_fast: 5
+  vol_slow: 30
+  vol_pct: null
+  vol_avg: sma
+  skip_hours: 11:30-13:30
+  min_box_atr: null
+  min_squeeze: 1.0
+  max_trend_er: null
+  er_days: 20
+  be_mult: null
+  risk_usd: null
+  max_mult: 3
+  iv_min: 12
+  iv_max: 30
+  ivr_min: null
+  ivr_max: null
+  ivr_days: 252
+  short_tp1_mult: null
+  short_tp2_mult: null
+  short_tp3_mult: null
+  short_trail_pct: null
+  short_leg2_ema_len: null
+  leg3_guard_r: null
+  leg3_guard_sl_r: 1
+  risk_trade_usd: null
+  risk_pct: null
+  start_capital: 100000
+  size_step: 0.1
+  size_atr_floor: 1
+  short_sl_box_pct: null
+  max_hold_hours: 72
+  tp2_mult: null
+  f_day_used_min: null
+  f_vwap_min: 5.5
+  f_ema50_slope_min: 0.9
+  f_adx_min: 19
+  f_body_max: 2.8
+  f_range_max: 4.0
+  f_box_min: 6
+  f_min_score: 2
+  size_up_score: 8
+  size_up_mult: 3
+  f_iv_min: 15
+  f_ema50_dist_min: 6
+  f_ema200_slope_min: 0.3

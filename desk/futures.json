@@ -9,6 +9,7 @@
   "MYM": {"exchange": "CBOT",  "point_value": 0.5,   "tick": 1.0,    "months": "HMUZ",         "roll": "equity_index",           "iv": "VXD", "signal": "YM",  "name": "Micro E-mini Dow"},
   "RTY": {"exchange": "CME",   "point_value": 50,    "tick": 0.1,    "months": "HMUZ",         "roll": "equity_index",           "iv": "RVX", "name": "E-mini Russell 2000"},
   "M2K": {"exchange": "CME",   "point_value": 5,     "tick": 0.1,    "months": "HMUZ",         "roll": "equity_index",           "iv": "RVX", "signal": "RTY", "name": "Micro E-mini Russell 2000"},
+  "NKD": {"exchange": "CME",   "point_value": 5,     "tick": 5.0,    "months": "HMUZ",         "roll": "second_friday",          "iv": "VIX", "trading_class": "NKD", "name": "Nikkei 225 (USD)"},
 
   "GC":  {"exchange": "COMEX", "point_value": 100,   "tick": 0.1,    "months": "GJMQVZ",       "roll": "month_before", "roll_days": 5,  "iv": "GVZ", "name": "Gold"},
   "MGC": {"exchange": "COMEX", "point_value": 10,    "tick": 0.1,    "months": "GJMQVZ",       "roll": "month_before", "roll_days": 5,  "iv": "GVZ", "signal": "GC",  "name": "Micro Gold"},

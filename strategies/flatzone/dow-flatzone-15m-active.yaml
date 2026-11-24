@@ -1,0 +1,67 @@
+# Dow Flat Zone 15m Active  -  from nq_wae_backtest/flatzone/flatzone_YM_15m_both2k.yaml (backtest: research/flatzone_backtest.py)
+# Research notes:
+# Flat Zone Breakout - YM 15 min, both directions, >= 2000 trades. Optimised 2026-11-24 (entry rule).
+#   1 tick: net $1,090k, max DD $62k, net/DD 17.55, 2104 trades (4208 legs), PF 1.44.
+#   0 slip net/DD 17.87 | 2 ticks 14.55 | 2016-22 net/DD 15.4, 2023-26 4.0 | neighbours median 13.2
+#   Run:  python flatzone/flatzone_backtest.py flatzone/flatzone_YM_15m_both2k.yaml
+id: dow-flatzone-15m-active
+name: Dow Flat Zone 15m Active
+family: Dow
+signal: YM
+markets:
+- MYM
+- YM
+pattern: Flat zone breakout
+summary: Breakout of a tight sideways zone on 15-minute candles, long and short.
+how_it_enters: 'Finds a flat zone: 6+ candles (15-minute) whose closes stay within 1.9 ATR and drift at most 40 % of the zone
+  height. A candle closing 45 % of the height beyond the zone (with a body that size) enters at that close, long or short.
+  Only if the candle''s volume is >= 0.8 x the same time of day''s average (10 days). Only when ADX(14) >= 25. No entries
+  22:00-02:00 New York. Volume >= 4.0 x average: x2 quantity.'
+how_it_exits: Stop at 2.5 ATR from the breakout close. Target contracts take profit 2.5 ATR from the breakout close. Runner
+  contracts trail 12.0 ATR behind the best price. Runner cap 20 ATR. At 3.0 ATR profit every stop locks entry + 0.2 ATR. If
+  the first stop is hit within 5 candles it reverses once (same size, same stop distance). Closed after 2 days.
+experimental: false
+default_qty:
+- 1
+- 2
+engine: flatzone
+source: nq_wae_backtest/flatzone/flatzone_YM_15m_both2k.yaml
+data: {}
+logic:
+  timeframe: 15
+  min_bars: 6
+  max_bars: 12
+  box_src: close
+  atr_len: 20
+  max_h_atr: 1.9
+  max_slope: 40
+  break_mode: body
+  break_pct: 45
+  direction: Both
+  skip_hours: 22:00-02:00
+  rev_bars: 5
+  vol_ref: tod
+  vol_days: 10
+  vol_min: 0.8
+  vol_boost: 4.0
+  vol_mult: 2
+  qty_step: null
+  qty_tiers: 5000:3, 22600:2, 30100:1
+  t_atr_len: 5
+  rev_vol_min: null
+  rev_vol_max: null
+  adx_len: 14
+  adx_min: 25
+  risk_usd: null
+  qty_t1: 1
+  t1_atr: 2.5
+  qty_t2: 2
+  trail_atr: 12.0
+  t2_atr: 20
+  max_hold_days: 2
+  trail_act: 0.0
+  sl_mode: atr
+  sl_atr: 2.5
+  be_after_t1: false
+  be_atr: 3.0
+  be_lock: 0.2
